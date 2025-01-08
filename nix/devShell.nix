@@ -14,6 +14,7 @@
   python3,
   qemu,
   scdoc,
+  snapcraft,
   valgrind,
   #, vulkan-loader # unused
   vttest,
@@ -98,6 +99,7 @@ in
         pandoc
         pkg-config
         scdoc
+        snapcraft
         zig
         zip
 

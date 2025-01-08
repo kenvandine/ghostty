@@ -8,8 +8,26 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
+  build-amd64:
+    runs-on: namespace-profile-ghostty-snap
     steps:
-    - uses: actions/checkout@v4
-    - uses: snapcore/action-build@v1
+      - uses: actions/checkout@v4
+      - name: Setup Cache
+        uses: namespacelabs/nscloud-cache-action@v1.2.0
+        with:
+          path: |
+            /nix
+            /zig
+      - uses: snapcore/action-build@v1
+
+  build-arm64:
+    runs-on: namespace-profile-ghostty-snap-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Cache
+        uses: namespacelabs/nscloud-cache-action@v1.2.0
+        with:
+          path: |
+            /nix
+            /zig
+      - uses: snapcore/action-build@v1
