@@ -72,11 +72,31 @@ parts:
       - libgtk-4-dev
       - libadwaita-1-dev
       - git
-    stage-packages:
-      - libadwaita-1-0
-      - libgtk-4-1
     override-build: |
       craftctl set version=$(grep version build.zig.zon |awk -F '"' '{print $2}')-$(git describe --abbrev=8)
       $CRAFT_PART_SRC/../../zig/src/zig build -Doptimize=ReleaseFast
       cp -rp zig-out/* $CRAFT_PART_INSTALL/
       sed -i 's|Icon=com.mitchellh.ghostty|Icon=/snap/ghostty/current/share/icons/hicolor/512x512/apps/com.mitchellh.ghostty.png|g' $CRAFT_PART_INSTALL/share/applications/com.mitchellh.ghostty.desktop
+
+  libs:
+    plugin: nil
+    stage-packages:
+      - libadwaita-1-0
+      - libgtk-4-1
+      - libgtk-4-media-gstreamer
+      - ibus-gtk4
+      - libegl1
+      - libegl-mesa0
+      - libgl1-mesa-dri
+      - libglapi-mesa
+      - libglu1-mesa
+      - libglx-mesa0
+      - mesa-va-drivers
+      - mesa-vulkan-drivers
+      - libpciaccess0
+      - libtinfo6
+      - libedit2
+      - libelf1t64
+      - libsensors5
+      - libllvm17
+      - on amd64: [i965-va-driver,libdrm-intel1,libdrm-nouveau2,libdrm-amdgpu1,libdrm-radeon1]
