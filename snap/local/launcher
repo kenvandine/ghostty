@@ -2,5 +2,16 @@
 
 export XDG_CONFIG_HOME="$SNAP_REAL_HOME/.config"
 export XDG_DATA_HOME="$SNAP_REAL_HOME/.local/share"
+export HOME="$SNAP_REAL_HOME"
+
+if [ "$SNAP_ARCH" = "amd64" ]; then
+  ARCH="x86_64-linux-gnu"
+elif [ "$SNAP_ARCH" = "arm64" ]; then
+  ARCH="aarch64-linux-gnu"
+else
+  ARCH="$SNAP_ARCH-linux-gnu"
+fi
+
+export LD_LIBRARY_PATH=$SNAP/usr/lib/$ARCH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 
 exec "$@"
