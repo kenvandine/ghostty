@@ -42,7 +42,7 @@ parts:
       - curl
     override-pull: |
       set -ex
-      case "$CRAFT_TARGET_ARCH" in
+      case "$CRAFT_ARCH_BUILD_FOR" in
         amd64)  arch=x86_64    ;;
         arm64)  arch=aarch64  ;;
         *)      arch=""     ;;
