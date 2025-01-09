@@ -80,6 +80,7 @@ parts:
 
   libs:
     plugin: nil
+    build-attributes: [enable-patchelf]
     stage-packages:
       - libadwaita-1-0
       - libgtk-4-1
