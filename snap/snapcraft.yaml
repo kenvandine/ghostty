@@ -98,4 +98,5 @@ parts:
       - libelf1t64
       - libsensors5
       - libllvm17
+      - gnome-text-editor # Needed for config editor
       - on amd64: [i965-va-driver,libdrm-intel1,libdrm-nouveau2,libdrm-amdgpu1,libdrm-radeon1]
