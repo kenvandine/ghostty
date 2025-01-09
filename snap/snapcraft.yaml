@@ -67,7 +67,6 @@ parts:
     source: .
     after: [zig]
     plugin: nil
-    build-attributes: [enable-patchelf]
     build-packages:
       - libgtk-4-dev
       - libadwaita-1-dev
@@ -80,7 +79,6 @@ parts:
 
   libs:
     plugin: nil
-    build-attributes: [enable-patchelf]
     stage-packages:
       - libadwaita-1-0
       - libgtk-4-1
