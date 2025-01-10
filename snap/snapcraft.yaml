@@ -79,24 +79,44 @@ parts:
 
   libs:
     plugin: nil
+    build-attributes: [enable-patchelf]
     stage-packages:
       - libadwaita-1-0
       - libgtk-4-1
       - libgtk-4-media-gstreamer
       - ibus-gtk4
-      - libegl1
-      - libegl-mesa0
-      - libgl1-mesa-dri
-      - libglapi-mesa
-      - libglu1-mesa
-      - libglx-mesa0
-      - mesa-va-drivers
-      - mesa-vulkan-drivers
       - libpciaccess0
       - libtinfo6
       - libedit2
       - libelf1t64
       - libsensors5
       - libllvm17
+      - libunistring5
       - gnome-text-editor # Needed for config editor
       - on amd64: [i965-va-driver,libdrm-intel1,libdrm-nouveau2,libdrm-amdgpu1,libdrm-radeon1]
+    stage:
+      # The libraries in dri need no-patchelf, so they come from the mesa-unpatched part
+      - -usr/lib/*/dri
+
+  mesa:
+    plugin: nil
+    build-attributes: [enable-patchelf]
+    stage-packages:
+      - libglu1-mesa
+      - libgl1-mesa-dri
+      - libegl-mesa0
+      - libegl1
+      - libglx-mesa0
+    stage:
+      # The libraries in dri need no-patchelf, so they come from the mesa-unpatched part
+      - -usr/lib/*/dri
+
+  mesa-gl1-dri:
+    plugin: nil
+    stage-packages:
+      - libgl1-mesa-dri
+    build-attributes: [no-patchelf]
+    stage:
+      # Only the libraries in dri need to not be patched, the rest come from the mesa part
+      # Otherwise snapcraft may strip the build ID and cause the driver to crash
+      - usr/lib/*/dri
