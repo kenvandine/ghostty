@@ -72,9 +72,6 @@ parts:
       - libgtk-4-dev
       - libadwaita-1-dev
       - git
-    stage-packages:
-      - libadwaita-1-0
-      - libgtk-4-1
     override-build: |
       craftctl set version=$(grep version build.zig.zon |awk -F '"' '{print $2}')-$(git describe --abbrev=8)
       $CRAFT_PART_SRC/../../zig/src/zig build -Doptimize=ReleaseFast
