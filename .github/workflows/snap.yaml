@@ -18,6 +18,8 @@ jobs:
           path: |
             /nix
             /zig
+      - run: sudo apt install -y udev
+      - run: sudo systemctl start systemd-udevd
       - uses: snapcore/action-build@v1
 
   build-arm64:
@@ -30,4 +32,6 @@ jobs:
           path: |
             /nix
             /zig
+      - run: sudo apt install -y udev
+      - run: sudo systemctl start systemd-udevd
       - uses: snapcore/action-build@v1
