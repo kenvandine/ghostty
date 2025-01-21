@@ -1,5 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/bin/sh
+set -e
 
 export XDG_CONFIG_HOME="$SNAP_REAL_HOME/.config"
 export XDG_DATA_HOME="$SNAP_REAL_HOME/.local/share"
@@ -13,62 +13,27 @@ else
   ARCH="$SNAP_ARCH-linux-gnu"
 fi
 
-# VDPAU_DRIVER_PATH only supports a single path, rely on LD_LIBRARY_PATH instead
-LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}${SNAP}/usr/lib/${ARCH}:${SNAP}/usr/lib/${ARCH}/vdpau
-LIBGL_DRIVERS_PATH=${LIBGL_DRIVERS_PATH:+$LIBGL_DRIVERS_PATH:}${SNAP}/usr/lib/${ARCH}/dri/
-LIBVA_DRIVERS_PATH=${LIBVA_DRIVERS_PATH:+$LIBVA_DRIVERS_PATH:}${SNAP}/usr/lib/${ARCH}/dri/
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}${SNAP}/usr/lib/${ARCH}:${SNAP}/usr/lib/${ARCH}/vdpau
+export LIBGL_DRIVERS_PATH=${LIBGL_DRIVERS_PATH:+$LIBGL_DRIVERS_PATH:}${SNAP}/usr/lib/${ARCH}/dri/
+export LIBVA_DRIVERS_PATH=${LIBVA_DRIVERS_PATH:+$LIBVA_DRIVERS_PATH:}${SNAP}/usr/lib/${ARCH}/dri/
+export __EGL_VENDOR_LIBRARY_DIRS=${__EGL_VENDOR_LIBRARY_DIRS:+$__EGL_VENDOR_LIBRARY_DIRS:}${SNAP}/usr/share/glvnd/egl_vendor.d
+export __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS=${__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS:+$__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS:}${SNAP}/usr/share/egl/egl_external_platform.d
+export DRIRC_CONFIGDIR=${SNAP}/usr/share/drirc.d
+export VK_LAYER_PATH=${VK_LAYER_PATH:+$VK_LAYER_PATH:}${SNAP}/usr/share/vulkan/implicit_layer.d/:${SNAP}/usr/share/vulkan/explicit_layer.d/
+export XDG_DATA_DIRS=${XDG_DATA_DIRS:+$XDG_DATA_DIRS:}${SNAP}/usr/share
+export XLOCALEDIR="${SNAP}/usr/share/X11/locale"
 
-__EGL_VENDOR_LIBRARY_DIRS=${__EGL_VENDOR_LIBRARY_DIRS:+$__EGL_VENDOR_LIBRARY_DIRS:}${SNAP}/usr/share/glvnd/egl_vendor.d
-__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS=${__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS:+$__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS:}${SNAP}/usr/share/egl/egl_external_platform.d
-DRIRC_CONFIGDIR=${SNAP}/usr/share/drirc.d
-VK_LAYER_PATH=${VK_LAYER_PATH:+$VK_LAYER_PATH:}${SNAP}/usr/share/vulkan/implicit_layer.d/:${SNAP}/usr/share/vulkan/explicit_layer.d/
-XDG_DATA_DIRS=${XDG_DATA_DIRS:+$XDG_DATA_DIRS:}${SNAP}/usr/share
-XLOCALEDIR="${SNAP}/usr/share/X11/locale"
-
-# These are in the default LD_LIBRARY_PATH, but in case the snap dropped it inadvertently
-if [ -d "/var/lib/snapd/lib/gl" ] && [[ ! ${LD_LIBRARY_PATH} =~ (^|:)/var/lib/snapd/lib/gl(:|$) ]]; then
-  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/var/lib/snapd/lib/gl
-fi
-
-if [ -d "/var/lib/snapd/lib/gl32" ] && [[ ! ${LD_LIBRARY_PATH} =~ (^|:)/var/lib/snapd/lib/gl32(:|$) ]]; then
-  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/var/lib/snapd/lib/gl32
-fi
-
-if [ -d "/var/lib/snapd/lib/glvnd/egl_vendor.d" ]; then
-  # This needs to be prepended, as glvnd goes depth-first on these
-  # TODO maybe collect the JSONs into a separate location so their ordering matters,
-  #  and not the dir order
-  __EGL_VENDOR_LIBRARY_DIRS=/var/lib/snapd/lib/glvnd/egl_vendor.d:${__EGL_VENDOR_LIBRARY_DIRS}
-fi
-
-if [ -d "/var/lib/snapd/lib/vulkan/icd.d" ]; then
-  XDG_DATA_DIRS=${XDG_DATA_DIRS}:/var/lib/snapd/lib
-fi
-
-if [ -d "/var/lib/snapd/lib/gl/vdpau" ]; then
-  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/var/lib/snapd/lib/gl/vdpau
-fi
-
-if [ -d "/var/lib/snapd/lib/gl32/vdpau" ]; then
-  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/var/lib/snapd/lib/gl32/vdpau
-fi
-
-if [ -d "/var/lib/snapd/lib/gl/gbm" ]; then
-  export GBM_BACKENDS_PATH=/var/lib/snapd/lib/gl/gbm
-fi
-
-export LD_LIBRARY_PATH
 export LIBGL_DRIVERS_PATH
 if [ "${__NV_PRIME_RENDER_OFFLOAD:-}" != 1 ]; then
   # Prevent picking VA-API (Intel/AMD) over NVIDIA VDPAU
   # https://download.nvidia.com/XFree86/Linux-x86_64/510.54/README/primerenderoffload.html#configureapplications
   export LIBVA_DRIVERS_PATH
 fi
-export __EGL_VENDOR_LIBRARY_DIRS
-export __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS
-export DRIRC_CONFIGDIR
-export VK_LAYER_PATH
-export XDG_DATA_DIRS
-export XLOCALEDIR
+
+# Unset all SNAP specific environment variables to keep them from leaking
+# into other snaps that might get executed from within the shell
+for var in $(printenv | grep SNAP | cut -d= -f1); do
+  unset $var
+done
 
 exec "$@"
