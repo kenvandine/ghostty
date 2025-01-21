@@ -74,8 +74,16 @@ parts:
       - git
       - patchelf
     override-build: |
+      set +u
       craftctl set version=$(grep version build.zig.zon |awk -F '"' '{print $2}')-$(git describe --abbrev=8)
-      $CRAFT_PART_SRC/../../zig/src/zig build -Dpatch-rpath=/snap/ghostty/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR -Doptimize=ReleaseFast
+      # workaround for build.snapcraft.io builds
+      # https://bugs.launchpad.net/bugs/1886861
+      if [ -n "$http_proxy" ]; then
+        export WITHPROXY="--build-proxy ${http_proxy}"
+        export GLOBAL_AGENT_HTTP_PROXY="${http_proxy}"
+        export GLOBAL_AGENT_HTTPS_PROXY="${http_proxy}"
+      fi
+      $CRAFT_PART_SRC/../../zig/src/zig build $WITHPROXY -Dpatch-rpath=/snap/ghostty/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR -Doptimize=ReleaseFast
       cp -rp zig-out/* $CRAFT_PART_INSTALL/
       sed -i 's|Icon=com.mitchellh.ghostty|Icon=/snap/ghostty/current/share/icons/hicolor/512x512/apps/com.mitchellh.ghostty.png|g' $CRAFT_PART_INSTALL/share/applications/com.mitchellh.ghostty.desktop
 
