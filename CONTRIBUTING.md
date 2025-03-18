@@ -21,6 +21,15 @@ All issues are actionable. Pick one and start working on it. Thank you.
 If you need help or guidance, comment on the issue. Issues that are extra
 friendly to new contributors are tagged with "contributor friendly".
 
+**I'd like to translate Ghostty to my language!**
+
+We have written a [Translator's Guide](po/README_TRANSLATORS.md) for
+everyone interested in contributing translations to Ghostty.
+Translations usually do not need to go through the process of issue triage
+and you can submit pull requests directly, although please make sure that
+our [Style Guide](po/README_TRANSLATORS.md#style-guide) is followed before
+submission.
+
 **I have a bug!**
 
 1. Search the issue tracker and discussions for similar issues.
@@ -85,6 +94,10 @@ pull request will be accepted with a high degree of certainty.
 > **The remainder of this file is dedicated to developers actively
 > working on Ghostty.** If you're a user reporting an issue, you can
 > ignore the rest of this document.
+
+## Including and Updating Translations
+
+See the [Contributor's Guide](po/README_CONTRIBUTORS.md) for more details.
 
 ## Input Stack Testing
 

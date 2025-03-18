@@ -1019,6 +1019,10 @@ pub fn setFontGrid(self: *Metal, grid: *font.SharedGrid) void {
         // out a better way to handle this.
         log.err("error resizing cells buffer err={}", .{err});
     };
+
+    // Reset our viewport to force a rebuild, since `setScreenSize` only
+    // does this when the number of cells changes, which isn't guaranteed.
+    self.cells_viewport = null;
 }
 
 /// Update the frame data.
@@ -1143,12 +1147,12 @@ pub fn updateFrame(
         // the entire screen. This can be optimized in the future.
         const full_rebuild: bool = rebuild: {
             {
-                const Int = @typeInfo(terminal.Terminal.Dirty).Struct.backing_integer.?;
+                const Int = @typeInfo(terminal.Terminal.Dirty).@"struct".backing_integer.?;
                 const v: Int = @bitCast(state.terminal.flags.dirty);
                 if (v > 0) break :rebuild true;
             }
             {
-                const Int = @typeInfo(terminal.Screen.Dirty).Struct.backing_integer.?;
+                const Int = @typeInfo(terminal.Screen.Dirty).@"struct".backing_integer.?;
                 const v: Int = @bitCast(state.terminal.screen.dirty);
                 if (v > 0) break :rebuild true;
             }
@@ -2028,13 +2032,16 @@ fn prepKittyPlacement(
         break :offset_y @intCast(offset_pixels);
     } else 0;
 
+    // Get the grid size that respects aspect ratio
+    const grid_size = p.gridSize(image.*, t);
+
     // If we specify `rows` then our offset above is in viewport space
     // and not in the coordinate space of the source image. Without `rows`
     // that's one and the same.
-    const source_offset_y: u32 = if (p.rows > 0) source_offset_y: {
+    const source_offset_y: u32 = if (grid_size.rows > 0) source_offset_y: {
         // Determine the scale factor to apply for this row height.
         const image_height: f64 = @floatFromInt(image.height);
-        const viewport_height: f64 = @floatFromInt(p.rows * self.grid_metrics.cell_height);
+        const viewport_height: f64 = @floatFromInt(grid_size.rows * self.grid_metrics.cell_height);
         const scale: f64 = image_height / viewport_height;
 
         // Apply the scale to the offset
@@ -2067,11 +2074,11 @@ fn prepKittyPlacement(
         image.height -| source_y;
 
     // Calculate the width/height of our image.
-    const dest_width = if (p.columns > 0) p.columns * self.grid_metrics.cell_width else source_width;
-    const dest_height = if (p.rows > 0) rows: {
+    const dest_width = grid_size.cols * self.grid_metrics.cell_width;
+    const dest_height = if (grid_size.rows > 0) rows: {
         // Clip to the viewport to handle scrolling. offset_y is already in
         // viewport scale so we can subtract it directly.
-        break :rows (p.rows * self.grid_metrics.cell_height) - offset_y;
+        break :rows (grid_size.rows * self.grid_metrics.cell_height) - offset_y;
     } else source_height;
 
     // Accumulate the placement

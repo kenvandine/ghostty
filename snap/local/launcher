@@ -14,6 +14,13 @@ if [ -z "$XDG_DATA_HOME" ]; then
   export XDG_DATA_HOME="$SNAP_REAL_HOME/.local/share"
 fi
 
+source "$SNAP_USER_DATA/.last_revision" 2>/dev/null || true
+if [ "$LAST_REVISION" = "$SNAP_REVISION" ]; then
+  needs_update=false
+else
+  needs_update=true
+fi
+
 export HOME="$SNAP_REAL_HOME"
 
 if [ "$SNAP_ARCH" = "amd64" ]; then
@@ -33,14 +40,26 @@ export DRIRC_CONFIGDIR=${SNAP}/usr/share/drirc.d
 export VK_LAYER_PATH=${VK_LAYER_PATH:+$VK_LAYER_PATH:}${SNAP}/usr/share/vulkan/implicit_layer.d/:${SNAP}/usr/share/vulkan/explicit_layer.d/
 export XDG_DATA_DIRS=${XDG_DATA_DIRS:+$XDG_DATA_DIRS:}${SNAP}/usr/share
 export XLOCALEDIR="${SNAP}/usr/share/X11/locale"
-export GDK_PIXBUF_MODULEDIR="$SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/2.10.0/loaders"
 export GTK_PATH="$SNAP/usr/lib/$ARCH/gtk-4.0"
+
+# Gdk-pixbuf loaders
+mkdir -p "$SNAP_USER_COMMON/.cache"
+export GDK_PIXBUF_MODULE_FILE="$SNAP_USER_COMMON/.cache/gdk-pixbuf-loaders.cache"
+export GDK_PIXBUF_MODULEDIR="$SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/2.10.0/loaders"
+if [ "$needs_update" = true ] || [ ! -f "$GDK_PIXBUF_MODULE_FILE" ]; then
+  rm -f "$GDK_PIXBUF_MODULE_FILE"
+  if [ -f "$SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders" ]; then
+    "$SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders" > "$GDK_PIXBUF_MODULE_FILE"
+  fi
+fi
 
 if [ "${__NV_PRIME_RENDER_OFFLOAD:-}" != 1 ]; then
   # Prevent picking VA-API (Intel/AMD) over NVIDIA VDPAU
   # https://download.nvidia.com/XFree86/Linux-x86_64/510.54/README/primerenderoffload.html#configureapplications
   export LIBVA_DRIVERS_PATH
 fi
+
+[ "$needs_update" = true ] && echo "LAST_REVISION=$SNAP_REVISION" > "$SNAP_USER_DATA/.last_revision"
 
 # Unset all SNAP specific environment variables to keep them from leaking
 # into other snaps that might get executed from within the shell

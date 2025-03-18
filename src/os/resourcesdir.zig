@@ -9,14 +9,22 @@ const Allocator = std.mem.Allocator;
 /// This is highly Ghostty-specific and can likely be generalized at
 /// some point but we can cross that bridge if we ever need to.
 pub fn resourcesDir(alloc: std.mem.Allocator) !?[]const u8 {
-    // If we have an environment variable set, we always use that.
+    // Use the GHOSTTY_RESOURCES_DIR environment variable in release builds.
+    //
+    // In debug builds we try using terminfo detection first instead, since
+    // if debug Ghostty is launched by an older version of Ghostty, it
+    // would inherit the old, stale resources of older Ghostty instead of the
+    // freshly built ones under zig-out/share/ghostty.
+    //
     // Note: we ALWAYS want to allocate here because the result is always
     // freed, do not try to use internal_os.getenv or posix getenv.
-    if (std.process.getEnvVarOwned(alloc, "GHOSTTY_RESOURCES_DIR")) |dir| {
-        if (dir.len > 0) return dir;
-    } else |err| switch (err) {
-        error.EnvironmentVariableNotFound => {},
-        else => return err,
+    if (comptime builtin.mode != .Debug) {
+        if (std.process.getEnvVarOwned(alloc, "GHOSTTY_RESOURCES_DIR")) |dir| {
+            if (dir.len > 0) return dir;
+        } else |err| switch (err) {
+            error.EnvironmentVariableNotFound => {},
+            else => return err,
+        }
     }
 
     // This is the sentinel value we look for in the path to know
@@ -38,7 +46,7 @@ pub fn resourcesDir(alloc: std.mem.Allocator) !?[]const u8 {
         exe = dir;
 
         // On MacOS, we look for the app bundle path.
-        if (comptime builtin.target.isDarwin()) {
+        if (comptime builtin.target.os.tag.isDarwin()) {
             if (try maybeDir(&dir_buf, dir, "Contents/Resources", sentinel)) |v| {
                 return try std.fs.path.join(alloc, &.{ v, "ghostty" });
             }
@@ -49,6 +57,17 @@ pub fn resourcesDir(alloc: std.mem.Allocator) !?[]const u8 {
         // Ghostty to be in an app bundle.
         if (try maybeDir(&dir_buf, dir, "share", sentinel)) |v| {
             return try std.fs.path.join(alloc, &.{ v, "ghostty" });
+        }
+    }
+
+    // If terminfo detection failed in debug builds (somehow),
+    // fallback and use the provided resources dir.
+    if (comptime builtin.mode == .Debug) {
+        if (std.process.getEnvVarOwned(alloc, "GHOSTTY_RESOURCES_DIR")) |dir| {
+            if (dir.len > 0) return dir;
+        } else |err| switch (err) {
+            error.EnvironmentVariableNotFound => {},
+            else => return err,
         }
     }
 

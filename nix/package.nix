@@ -13,16 +13,18 @@
   libGL,
   glib,
   gtk4,
+  gtk4-layer-shell,
   gobject-introspection,
   libadwaita,
   blueprint-compiler,
   libxml2,
+  gettext,
   wrapGAppsHook4,
   gsettings-desktop-schemas,
   git,
   ncurses,
   pkg-config,
-  zig_0_13,
+  zig_0_14,
   pandoc,
   revision ? "dirty",
   optimize ? "Debug",
@@ -43,7 +45,7 @@
   # https://github.com/ziglang/zig/issues/14281#issuecomment-1624220653 is
   # ultimately acted on and has made its way to a nixpkgs implementation, this
   # can probably be removed in favor of that.
-  zig_hook = zig_0_13.hook.overrideAttrs {
+  zig_hook = zig_0_14.hook.overrideAttrs {
     zig_default_flags = "-Dcpu=baseline -Doptimize=${optimize} --color off";
   };
 in
@@ -63,6 +65,7 @@ in
           ../dist/linux
           ../images
           ../include
+          ../po
           ../pkg
           ../src
           ../vendor
@@ -86,6 +89,7 @@ in
         wrapGAppsHook4
         blueprint-compiler
         libxml2 # for xmllint
+        gettext
       ]
       ++ lib.optionals enableWayland [
         wayland-scanner
@@ -118,6 +122,7 @@ in
         libXrandr
       ]
       ++ lib.optionals enableWayland [
+        gtk4-layer-shell
         wayland
       ];
 

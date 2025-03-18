@@ -580,6 +580,7 @@ typedef enum {
   GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM,
   GHOSTTY_ACTION_PRESENT_TERMINAL,
   GHOSTTY_ACTION_SIZE_LIMIT,
+  GHOSTTY_ACTION_RESET_WINDOW_SIZE,
   GHOSTTY_ACTION_INITIAL_SIZE,
   GHOSTTY_ACTION_CELL_SIZE,
   GHOSTTY_ACTION_INSPECTOR,
@@ -599,6 +600,7 @@ typedef enum {
   GHOSTTY_ACTION_COLOR_CHANGE,
   GHOSTTY_ACTION_RELOAD_CONFIG,
   GHOSTTY_ACTION_CONFIG_CHANGE,
+  GHOSTTY_ACTION_CLOSE_WINDOW,
 } ghostty_action_tag_e;
 
 typedef union {
@@ -667,6 +669,7 @@ typedef struct {
 int ghostty_init(void);
 void ghostty_cli_main(uintptr_t, char**);
 ghostty_info_s ghostty_info(void);
+const char* ghostty_translate(const char*);
 
 ghostty_config_t ghostty_config_new();
 void ghostty_config_free(ghostty_config_t);

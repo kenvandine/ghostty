@@ -4,16 +4,21 @@
 const Surface = @This();
 
 const std = @import("std");
+
 const adw = @import("adw");
 const gtk = @import("gtk");
+const gdk = @import("gdk");
+const glib = @import("glib");
 const gio = @import("gio");
 const gobject = @import("gobject");
+
 const Allocator = std.mem.Allocator;
 const build_config = @import("../../build_config.zig");
 const build_options = @import("build_options");
 const configpkg = @import("../../config.zig");
 const apprt = @import("../../apprt.zig");
 const font = @import("../../font/main.zig");
+const i18n = @import("../../os/main.zig").i18n;
 const input = @import("../../input.zig");
 const renderer = @import("../../renderer.zig");
 const terminal = @import("../../terminal/main.zig");
@@ -27,9 +32,10 @@ const Window = @import("Window.zig");
 const Menu = @import("menu.zig").Menu;
 const ClipboardConfirmationWindow = @import("ClipboardConfirmationWindow.zig");
 const ResizeOverlay = @import("ResizeOverlay.zig");
-const inspector = @import("inspector.zig");
+const URLWidget = @import("URLWidget.zig");
+const CloseDialog = @import("CloseDialog.zig");
+const inspectorpkg = @import("inspector.zig");
 const gtk_key = @import("key.zig");
-const c = @import("c.zig").c;
 const Builder = @import("Builder.zig");
 const adwaita = @import("adwaita.zig");
 
@@ -80,10 +86,10 @@ pub const Container = union(enum) {
 
         /// Returns the GTK widget to add to the paned for the given
         /// element
-        pub fn widget(self: Elem) *c.GtkWidget {
+        pub fn widget(self: Elem) *gtk.Widget {
             return switch (self) {
                 .surface => |s| s.primaryWidget(),
-                .split => |s| @ptrCast(@alignCast(s.paned)),
+                .split => |s| s.paned.as(gtk.Widget),
             };
         }
 
@@ -218,99 +224,6 @@ pub const Container = union(enum) {
     }
 };
 
-/// Represents the URL hover widgets that show the hovered URL.
-/// To explain a bit how this all works since its split across a few places:
-/// We create a left/right pair of labels. The left label is shown by default,
-/// and the right label is hidden. When the mouse enters the left label, we
-/// show the right label. When the mouse leaves the left label, we hide the
-/// right label.
-///
-/// The hover and styling is done with a combination of GTK event controllers
-/// and CSS in style.css.
-pub const URLWidget = struct {
-    left: *c.GtkWidget,
-    right: *c.GtkWidget,
-
-    pub fn init(surface: *const Surface, str: [:0]const u8) URLWidget {
-        // Create the left
-        const left = c.gtk_label_new(str.ptr);
-        c.gtk_label_set_ellipsize(@ptrCast(left), c.PANGO_ELLIPSIZE_MIDDLE);
-        c.gtk_widget_add_css_class(@ptrCast(left), "view");
-        c.gtk_widget_add_css_class(@ptrCast(left), "url-overlay");
-        c.gtk_widget_add_css_class(@ptrCast(left), "left");
-        c.gtk_widget_set_halign(left, c.GTK_ALIGN_START);
-        c.gtk_widget_set_valign(left, c.GTK_ALIGN_END);
-
-        // Create the right
-        const right = c.gtk_label_new(str.ptr);
-        c.gtk_label_set_ellipsize(@ptrCast(right), c.PANGO_ELLIPSIZE_MIDDLE);
-        c.gtk_widget_add_css_class(@ptrCast(right), "hidden");
-        c.gtk_widget_add_css_class(@ptrCast(right), "view");
-        c.gtk_widget_add_css_class(@ptrCast(right), "url-overlay");
-        c.gtk_widget_add_css_class(@ptrCast(right), "right");
-        c.gtk_widget_set_halign(right, c.GTK_ALIGN_END);
-        c.gtk_widget_set_valign(right, c.GTK_ALIGN_END);
-
-        // Setup our mouse hover event for the left
-        const ec_motion = c.gtk_event_controller_motion_new();
-        errdefer c.g_object_unref(ec_motion);
-        c.gtk_widget_add_controller(@ptrCast(left), ec_motion);
-        _ = c.g_signal_connect_data(
-            ec_motion,
-            "enter",
-            c.G_CALLBACK(&gtkLeftEnter),
-            right,
-            null,
-            c.G_CONNECT_DEFAULT,
-        );
-        _ = c.g_signal_connect_data(
-            ec_motion,
-            "leave",
-            c.G_CALLBACK(&gtkLeftLeave),
-            right,
-            null,
-            c.G_CONNECT_DEFAULT,
-        );
-
-        // Show it
-        c.gtk_overlay_add_overlay(surface.overlay, left);
-        c.gtk_overlay_add_overlay(surface.overlay, right);
-
-        return .{
-            .left = left,
-            .right = right,
-        };
-    }
-
-    pub fn deinit(self: *URLWidget, overlay: *c.GtkOverlay) void {
-        c.gtk_overlay_remove_overlay(overlay, @ptrCast(self.left));
-        c.gtk_overlay_remove_overlay(overlay, @ptrCast(self.right));
-    }
-
-    pub fn setText(self: *const URLWidget, str: [:0]const u8) void {
-        c.gtk_label_set_text(@ptrCast(self.left), str.ptr);
-        c.gtk_label_set_text(@ptrCast(self.right), str.ptr);
-    }
-
-    fn gtkLeftEnter(
-        _: *c.GtkEventControllerMotion,
-        _: c.gdouble,
-        _: c.gdouble,
-        ud: ?*anyopaque,
-    ) callconv(.C) void {
-        const right: *c.GtkWidget = @ptrCast(@alignCast(ud orelse return));
-        c.gtk_widget_remove_css_class(@ptrCast(right), "hidden");
-    }
-
-    fn gtkLeftLeave(
-        _: *c.GtkEventControllerMotion,
-        ud: ?*anyopaque,
-    ) callconv(.C) void {
-        const right: *c.GtkWidget = @ptrCast(@alignCast(ud orelse return));
-        c.gtk_widget_add_css_class(@ptrCast(right), "hidden");
-    }
-};
-
 /// Whether the surface has been realized or not yet. When a surface is
 /// "realized" it means that the OpenGL context is ready and the core
 /// surface has been initialized.
@@ -327,10 +240,10 @@ container: Container = .{ .none = {} },
 app: *App,
 
 /// The overlay, this is the primary widget
-overlay: *c.GtkOverlay,
+overlay: *gtk.Overlay,
 
 /// Our GTK area
-gl_area: *c.GtkGLArea,
+gl_area: *gtk.GLArea,
 
 /// If non-null this is the widget on the overlay that shows the URL.
 url_widget: ?URLWidget = null,
@@ -342,10 +255,10 @@ resize_overlay: ResizeOverlay = undefined,
 zoomed_in: bool = false,
 
 /// If non-null this is the widget on the overlay which dims the surface when it is unfocused
-unfocused_widget: ?*c.GtkWidget = null,
+unfocused_widget: ?*gtk.Widget = null,
 
 /// Any active cursor we may have
-cursor: ?*c.GdkCursor = null,
+cursor: ?*gdk.Cursor = null,
 
 /// Our title. The raw value of the title. This will be kept up to date and
 /// .title will be updated if we have focus.
@@ -365,7 +278,7 @@ title_from_terminal: ?[:0]const u8 = null,
 pwd: ?[:0]const u8 = null,
 
 /// The timer used to delay title updates in order to prevent flickering.
-update_title_timer: ?c.guint = null,
+update_title_timer: ?c_uint = null,
 
 /// The core surface backing this surface
 core_surface: CoreSurface,
@@ -378,11 +291,11 @@ size: apprt.SurfaceSize,
 cursor_pos: apprt.CursorPos,
 
 /// Inspector state.
-inspector: ?*inspector.Inspector = null,
+inspector: ?*inspectorpkg.Inspector = null,
 
 /// Key input states. See gtkKeyPressed for detailed descriptions.
 in_keyevent: IMKeyEvent = .false,
-im_context: *c.GtkIMContext,
+im_context: *gtk.IMMulticontext,
 im_composing: bool = false,
 im_buf: [128]u8 = undefined,
 im_len: u7 = 0,
@@ -393,6 +306,12 @@ cgroup_path: ?[]const u8 = null,
 
 /// Our context menu.
 context_menu: Menu(Surface, "context_menu", false),
+
+/// True when we have a precision scroll in progress
+precision_scroll: bool = false,
+
+/// Flag indicating whether the surface is in secure input mode.
+is_secure_input: bool = false,
 
 /// The state of the key event while we're doing IM composition.
 /// See gtkKeyPressed for detailed descriptions.
@@ -446,15 +365,18 @@ pub fn create(alloc: Allocator, app: *App, opts: Options) !*Surface {
 }
 
 pub fn init(self: *Surface, app: *App, opts: Options) !void {
-    const gl_area = c.gtk_gl_area_new();
+    const gl_area = gtk.GLArea.new();
+    const gl_area_widget = gl_area.as(gtk.Widget);
 
     // Create an overlay so we can layer the GL area with other widgets.
-    const overlay = c.gtk_overlay_new();
-    c.gtk_overlay_set_child(@ptrCast(overlay), gl_area);
+    const overlay = gtk.Overlay.new();
+    errdefer overlay.unref();
+    const overlay_widget = overlay.as(gtk.Widget);
+    overlay.setChild(gl_area_widget);
 
     // Overlay is not focusable, but the GL area is.
-    c.gtk_widget_set_focusable(@ptrCast(overlay), 0);
-    c.gtk_widget_set_focus_on_click(@ptrCast(overlay), 0);
+    overlay_widget.setFocusable(0);
+    overlay_widget.setFocusOnClick(0);
 
     // We grab the floating reference to the primary widget. This allows the
     // widget tree to be moved around i.e. between a split, a tab, etc.
@@ -463,78 +385,81 @@ pub fn init(self: *Surface, app: *App, opts: Options) !void {
     //
     // This is unref'd in the unref() method that's called by the
     // self.container through Elem.deinit.
-    _ = c.g_object_ref_sink(@ptrCast(overlay));
-    errdefer c.g_object_unref(@ptrCast(overlay));
+    _ = overlay.as(gobject.Object).refSink();
+    errdefer overlay.unref();
 
     // We want the gl area to expand to fill the parent container.
-    c.gtk_widget_set_hexpand(gl_area, 1);
-    c.gtk_widget_set_vexpand(gl_area, 1);
+    gl_area_widget.setHexpand(1);
+    gl_area_widget.setVexpand(1);
 
     // Various other GL properties
-    c.gtk_widget_set_cursor_from_name(@ptrCast(gl_area), "text");
-    c.gtk_gl_area_set_required_version(@ptrCast(gl_area), 3, 3);
-    c.gtk_gl_area_set_has_stencil_buffer(@ptrCast(gl_area), 0);
-    c.gtk_gl_area_set_has_depth_buffer(@ptrCast(gl_area), 0);
-    c.gtk_gl_area_set_use_es(@ptrCast(gl_area), 0);
+    gl_area_widget.setCursorFromName("text");
+    gl_area.setRequiredVersion(3, 3);
+    gl_area.setHasStencilBuffer(0);
+    gl_area.setHasDepthBuffer(0);
+    gl_area.setUseEs(0);
 
     // Key event controller will tell us about raw keypress events.
-    const ec_key = c.gtk_event_controller_key_new();
-    errdefer c.g_object_unref(ec_key);
-    c.gtk_widget_add_controller(@ptrCast(overlay), ec_key);
-    errdefer c.gtk_widget_remove_controller(@ptrCast(overlay), ec_key);
+    const ec_key = gtk.EventControllerKey.new();
+    errdefer ec_key.unref();
+    overlay_widget.addController(ec_key.as(gtk.EventController));
+    errdefer overlay_widget.removeController(ec_key.as(gtk.EventController));
 
     // Focus controller will tell us about focus enter/exit events
-    const ec_focus = c.gtk_event_controller_focus_new();
-    errdefer c.g_object_unref(ec_focus);
-    c.gtk_widget_add_controller(@ptrCast(overlay), ec_focus);
-    errdefer c.gtk_widget_remove_controller(@ptrCast(overlay), ec_focus);
+    const ec_focus = gtk.EventControllerFocus.new();
+    errdefer ec_focus.unref();
+    overlay_widget.addController(ec_focus.as(gtk.EventController));
+    errdefer overlay_widget.removeController(ec_focus.as(gtk.EventController));
 
     // Create a second key controller so we can receive the raw
     // key-press events BEFORE the input method gets them.
-    const ec_key_press = c.gtk_event_controller_key_new();
-    errdefer c.g_object_unref(ec_key_press);
-    c.gtk_widget_add_controller(@ptrCast(overlay), ec_key_press);
-    errdefer c.gtk_widget_remove_controller(@ptrCast(overlay), ec_key_press);
+    const ec_key_press = gtk.EventControllerKey.new();
+    errdefer ec_key_press.unref();
+    overlay_widget.addController(ec_key_press.as(gtk.EventController));
+    errdefer overlay_widget.removeController(ec_key_press.as(gtk.EventController));
 
     // Clicks
-    const gesture_click = c.gtk_gesture_click_new();
-    errdefer c.g_object_unref(gesture_click);
-    c.gtk_gesture_single_set_button(@ptrCast(gesture_click), 0);
-    c.gtk_widget_add_controller(@ptrCast(@alignCast(overlay)), @ptrCast(gesture_click));
+    const gesture_click = gtk.GestureClick.new();
+    errdefer gesture_click.unref();
+    gesture_click.as(gtk.GestureSingle).setButton(0);
+    overlay_widget.addController(gesture_click.as(gtk.EventController));
+    errdefer overlay_widget.removeController(gesture_click.as(gtk.EventController));
 
     // Mouse movement
-    const ec_motion = c.gtk_event_controller_motion_new();
-    errdefer c.g_object_unref(ec_motion);
-    c.gtk_widget_add_controller(@ptrCast(@alignCast(overlay)), ec_motion);
+    const ec_motion = gtk.EventControllerMotion.new();
+    errdefer ec_motion.unref();
+    overlay_widget.addController(ec_motion.as(gtk.EventController));
+    errdefer overlay_widget.removeController(ec_motion.as(gtk.EventController));
 
     // Scroll events
-    const ec_scroll = c.gtk_event_controller_scroll_new(
-        c.GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES |
-            c.GTK_EVENT_CONTROLLER_SCROLL_DISCRETE,
-    );
-    errdefer c.g_object_unref(ec_scroll);
-    c.gtk_widget_add_controller(@ptrCast(overlay), ec_scroll);
+    const ec_scroll = gtk.EventControllerScroll.new(.flags_both_axes);
+    errdefer ec_scroll.unref();
+    overlay_widget.addController(ec_scroll.as(gtk.EventController));
+    errdefer overlay_widget.removeController(ec_scroll.as(gtk.EventController));
 
     // The input method context that we use to translate key events into
     // characters. This doesn't have an event key controller attached because
     // we call it manually from our own key controller.
-    const im_context = c.gtk_im_multicontext_new();
-    errdefer c.g_object_unref(im_context);
+    const im_context = gtk.IMMulticontext.new();
+    errdefer im_context.unref();
 
     // The GL area has to be focusable so that it can receive events
-    c.gtk_widget_set_focusable(gl_area, 1);
-    c.gtk_widget_set_focus_on_click(gl_area, 1);
+    gl_area_widget.setFocusable(1);
+    gl_area_widget.setFocusOnClick(1);
 
     // Set up to handle items being dropped on our surface. Files can be dropped
     // from Nautilus and strings can be dropped from many programs.
-    const drop_target = c.gtk_drop_target_new(c.G_TYPE_INVALID, c.GDK_ACTION_COPY);
-    errdefer c.g_object_unref(drop_target);
-    var drop_target_types = [_]c.GType{
-        c.gdk_file_list_get_type(),
-        c.G_TYPE_STRING,
+    const drop_target = gtk.DropTarget.new(gobject.ext.types.invalid, .flags_copy);
+    errdefer drop_target.unref();
+    // The order of the types matters.
+    var drop_target_types = [_]gobject.Type{
+        gdk.FileList.getGObjectType(),
+        gio.File.getGObjectType(),
+        gobject.ext.types.string,
     };
-    c.gtk_drop_target_set_gtypes(drop_target, @ptrCast(&drop_target_types), drop_target_types.len);
-    c.gtk_widget_add_controller(@ptrCast(overlay), @ptrCast(drop_target));
+    drop_target.setGtypes(&drop_target_types, drop_target_types.len);
+    overlay_widget.addController(drop_target.as(gtk.EventController));
+    errdefer overlay_widget.removeController(drop_target.as(gtk.EventController));
 
     // Inherit the parent's font size if we have a parent.
     const font_size: ?font.face.DesiredSize = font_size: {
@@ -581,8 +506,8 @@ pub fn init(self: *Surface, app: *App, opts: Options) !void {
     self.* = .{
         .app = app,
         .container = .{ .none = {} },
-        .overlay = @ptrCast(overlay),
-        .gl_area = @ptrCast(gl_area),
+        .overlay = overlay,
+        .gl_area = gl_area,
         .resize_overlay = undefined,
         .title_text = null,
         .core_surface = undefined,
@@ -607,26 +532,153 @@ pub fn init(self: *Surface, app: *App, opts: Options) !void {
     try self.setMouseShape(.text);
 
     // GL events
-    _ = c.g_signal_connect_data(gl_area, "realize", c.G_CALLBACK(&gtkRealize), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(gl_area, "unrealize", c.G_CALLBACK(&gtkUnrealize), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(gl_area, "destroy", c.G_CALLBACK(&gtkDestroy), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(gl_area, "render", c.G_CALLBACK(&gtkRender), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(gl_area, "resize", c.G_CALLBACK(&gtkResize), self, null, c.G_CONNECT_DEFAULT);
-
-    _ = c.g_signal_connect_data(ec_key_press, "key-pressed", c.G_CALLBACK(&gtkKeyPressed), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(ec_key_press, "key-released", c.G_CALLBACK(&gtkKeyReleased), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(ec_focus, "enter", c.G_CALLBACK(&gtkFocusEnter), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(ec_focus, "leave", c.G_CALLBACK(&gtkFocusLeave), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(gesture_click, "pressed", c.G_CALLBACK(&gtkMouseDown), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(gesture_click, "released", c.G_CALLBACK(&gtkMouseUp), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(ec_motion, "motion", c.G_CALLBACK(&gtkMouseMotion), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(ec_motion, "leave", c.G_CALLBACK(&gtkMouseLeave), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(ec_scroll, "scroll", c.G_CALLBACK(&gtkMouseScroll), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(im_context, "preedit-start", c.G_CALLBACK(&gtkInputPreeditStart), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(im_context, "preedit-changed", c.G_CALLBACK(&gtkInputPreeditChanged), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(im_context, "preedit-end", c.G_CALLBACK(&gtkInputPreeditEnd), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(im_context, "commit", c.G_CALLBACK(&gtkInputCommit), self, null, c.G_CONNECT_DEFAULT);
-    _ = c.g_signal_connect_data(drop_target, "drop", c.G_CALLBACK(&gtkDrop), self, null, c.G_CONNECT_DEFAULT);
+    _ = gtk.Widget.signals.realize.connect(
+        gl_area,
+        *Surface,
+        gtkRealize,
+        self,
+        .{},
+    );
+    _ = gtk.Widget.signals.unrealize.connect(
+        gl_area,
+        *Surface,
+        gtkUnrealize,
+        self,
+        .{},
+    );
+    _ = gtk.Widget.signals.destroy.connect(
+        gl_area,
+        *Surface,
+        gtkDestroy,
+        self,
+        .{},
+    );
+    _ = gtk.GLArea.signals.render.connect(
+        gl_area,
+        *Surface,
+        gtkRender,
+        self,
+        .{},
+    );
+    _ = gtk.GLArea.signals.resize.connect(
+        gl_area,
+        *Surface,
+        gtkResize,
+        self,
+        .{},
+    );
+    _ = gtk.EventControllerKey.signals.key_pressed.connect(
+        ec_key_press,
+        *Surface,
+        gtkKeyPressed,
+        self,
+        .{},
+    );
+    _ = gtk.EventControllerKey.signals.key_released.connect(
+        ec_key_press,
+        *Surface,
+        gtkKeyReleased,
+        self,
+        .{},
+    );
+    _ = gtk.EventControllerFocus.signals.enter.connect(
+        ec_focus,
+        *Surface,
+        gtkFocusEnter,
+        self,
+        .{},
+    );
+    _ = gtk.EventControllerFocus.signals.leave.connect(
+        ec_focus,
+        *Surface,
+        gtkFocusLeave,
+        self,
+        .{},
+    );
+    _ = gtk.GestureClick.signals.pressed.connect(
+        gesture_click,
+        *Surface,
+        gtkMouseDown,
+        self,
+        .{},
+    );
+    _ = gtk.GestureClick.signals.released.connect(
+        gesture_click,
+        *Surface,
+        gtkMouseUp,
+        self,
+        .{},
+    );
+    _ = gtk.EventControllerMotion.signals.motion.connect(
+        ec_motion,
+        *Surface,
+        gtkMouseMotion,
+        self,
+        .{},
+    );
+    _ = gtk.EventControllerMotion.signals.leave.connect(
+        ec_motion,
+        *Surface,
+        gtkMouseLeave,
+        self,
+        .{},
+    );
+    _ = gtk.EventControllerScroll.signals.scroll.connect(
+        ec_scroll,
+        *Surface,
+        gtkMouseScroll,
+        self,
+        .{},
+    );
+    _ = gtk.EventControllerScroll.signals.scroll_begin.connect(
+        ec_scroll,
+        *Surface,
+        gtkMouseScrollPrecisionBegin,
+        self,
+        .{},
+    );
+    _ = gtk.EventControllerScroll.signals.scroll_end.connect(
+        ec_scroll,
+        *Surface,
+        gtkMouseScrollPrecisionEnd,
+        self,
+        .{},
+    );
+    _ = gtk.IMContext.signals.preedit_start.connect(
+        im_context,
+        *Surface,
+        gtkInputPreeditStart,
+        self,
+        .{},
+    );
+    _ = gtk.IMContext.signals.preedit_changed.connect(
+        im_context,
+        *Surface,
+        gtkInputPreeditChanged,
+        self,
+        .{},
+    );
+    _ = gtk.IMContext.signals.preedit_end.connect(
+        im_context,
+        *Surface,
+        gtkInputPreeditEnd,
+        self,
+        .{},
+    );
+    _ = gtk.IMContext.signals.commit.connect(
+        im_context,
+        *Surface,
+        gtkInputCommit,
+        self,
+        .{},
+    );
+    _ = gtk.DropTarget.signals.drop.connect(
+        drop_target,
+        *Surface,
+        gtkDrop,
+        self,
+        .{},
+    );
 }
 
 fn realize(self: *Surface) !void {
@@ -701,9 +753,9 @@ pub fn deinit(self: *Surface) void {
     // Note we don't do anything with the "unfocused_overlay" because
     // it is attached to the overlay which by this point has been destroyed
     // and therefore the unfocused_overlay has been destroyed as well.
-    c.g_object_unref(self.im_context);
-    if (self.cursor) |cursor| c.g_object_unref(cursor);
-    if (self.update_title_timer) |timer| _ = c.g_source_remove(timer);
+    self.im_context.unref();
+    if (self.cursor) |cursor| cursor.unref();
+    if (self.update_title_timer) |timer| _ = glib.Source.remove(timer);
     self.resize_overlay.deinit();
 }
 
@@ -715,7 +767,7 @@ pub fn updateConfig(self: *Surface, config: *const configpkg.Config) !void {
 // unref removes the long-held reference to the gl_area and kicks off the
 // deinit/destroy process for this surface.
 pub fn unref(self: *Surface) void {
-    c.g_object_unref(self.overlay);
+    self.overlay.unref();
 }
 
 pub fn destroy(self: *Surface, alloc: Allocator) void {
@@ -723,8 +775,8 @@ pub fn destroy(self: *Surface, alloc: Allocator) void {
     alloc.destroy(self);
 }
 
-pub fn primaryWidget(self: *Surface) *c.GtkWidget {
-    return @ptrCast(@alignCast(self.overlay));
+pub fn primaryWidget(self: *Surface) *gtk.Widget {
+    return self.overlay.as(gtk.Widget);
 }
 
 fn render(self: *Surface) !void {
@@ -743,58 +795,26 @@ pub fn queueInspectorRender(self: *Surface) void {
 
 /// Invalidate the surface so that it forces a redraw on the next tick.
 pub fn redraw(self: *Surface) void {
-    c.gtk_gl_area_queue_render(self.gl_area);
+    self.gl_area.queueRender();
 }
 
 /// Close this surface.
-pub fn close(self: *Surface, processActive: bool) void {
+pub fn close(self: *Surface, process_active: bool) void {
+    self.closeWithConfirmation(process_active, .{ .surface = self });
+}
+
+/// Close this surface.
+pub fn closeWithConfirmation(self: *Surface, process_active: bool, target: CloseDialog.Target) void {
     self.setSplitZoom(false);
 
-    // If we're not part of a window hierarchy, we never confirm
-    // so we can just directly remove ourselves and exit.
-    const window = self.container.window() orelse {
-        self.container.remove();
-        return;
-    };
-
-    // If we have no process active we can just exit immediately.
-    if (!processActive) {
+    if (!process_active) {
         self.container.remove();
         return;
     }
 
-    // Setup our basic message
-    const alert = c.gtk_message_dialog_new(
-        window.window,
-        c.GTK_DIALOG_MODAL,
-        c.GTK_MESSAGE_QUESTION,
-        c.GTK_BUTTONS_YES_NO,
-        "Close this terminal?",
-    );
-    c.gtk_message_dialog_format_secondary_text(
-        @ptrCast(alert),
-        "There is still a running process in the terminal. " ++
-            "Closing the terminal will kill this process. " ++
-            "Are you sure you want to close the terminal?\n\n" ++
-            "Click 'No' to cancel and return to your terminal.",
-    );
-
-    // We want the "yes" to appear destructive.
-    const yes_widget = c.gtk_dialog_get_widget_for_response(
-        @ptrCast(alert),
-        c.GTK_RESPONSE_YES,
-    );
-    c.gtk_widget_add_css_class(yes_widget, "destructive-action");
-
-    // We want the "no" to be the default action
-    c.gtk_dialog_set_default_response(
-        @ptrCast(alert),
-        c.GTK_RESPONSE_NO,
-    );
-
-    _ = c.g_signal_connect_data(alert, "response", c.G_CALLBACK(&gtkCloseConfirmation), self, null, c.G_CONNECT_DEFAULT);
-
-    c.gtk_widget_show(alert);
+    CloseDialog.show(target) catch |err| {
+        log.err("failed to open close dialog={}", .{err});
+    };
 }
 
 pub fn controlInspector(
@@ -818,23 +838,13 @@ pub fn controlInspector(
 
     // If we already have an inspector, we don't need to show anything.
     if (self.inspector != null) return;
-    self.inspector = inspector.Inspector.create(
+    self.inspector = inspectorpkg.Inspector.create(
         self,
         .{ .window = {} },
     ) catch |err| {
         log.err("failed to control inspector err={}", .{err});
         return;
     };
-}
-
-pub fn getTitleLabel(self: *Surface) ?*c.GtkWidget {
-    switch (self.title) {
-        .none => return null,
-        .label => |label| {
-            const widget = @as(*c.GtkWidget, @ptrCast(@alignCast(label)));
-            return widget;
-        },
-    }
 }
 
 pub fn setShouldClose(self: *Surface) void {
@@ -848,7 +858,7 @@ pub fn shouldClose(self: *const Surface) bool {
 
 pub fn getContentScale(self: *const Surface) !apprt.ContentScale {
     const gtk_scale: f32 = scale: {
-        const widget: *gtk.Widget = @ptrCast(@alignCast(self.gl_area));
+        const widget = self.gl_area.as(gtk.Widget);
         // Future: detect GTK version 4.12+ and use gdk_surface_get_scale so we
         // can support fractional scaling.
         const scale = widget.getScaleFactor();
@@ -896,6 +906,13 @@ pub fn getSize(self: *const Surface) !apprt.SurfaceSize {
 }
 
 pub fn setInitialWindowSize(self: *const Surface, width: u32, height: u32) !void {
+    // If we've already become realized once then we ignore this
+    // request. The apprt initial_size action should only modify
+    // the physical size of the window during initialization.
+    // Subsequent actions are only informative in case we want to
+    // implement a "return to default size" action later.
+    if (self.realized) return;
+
     // If we are within a split, do not set the size.
     if (self.container.split() != null) return;
 
@@ -904,13 +921,11 @@ pub fn setInitialWindowSize(self: *const Surface, width: u32, height: u32) !void
     const window = self.container.window() orelse return;
     if (window.notebook.nPages() > 1) return;
 
+    const gtk_window = window.window.as(gtk.Window);
+
     // Note: this doesn't properly take into account the window decorations.
     // I'm not currently sure how to do that.
-    c.gtk_window_set_default_size(
-        @ptrCast(window.window),
-        @intCast(width),
-        @intCast(height),
-    );
+    gtk_window.setDefaultSize(@intCast(width), @intCast(height));
 }
 
 pub fn setSizeLimits(self: *const Surface, min: apprt.SurfaceSize, max_: ?apprt.SurfaceSize) !void {
@@ -926,13 +941,11 @@ pub fn setSizeLimits(self: *const Surface, min: apprt.SurfaceSize, max_: ?apprt.
     const window = self.container.window() orelse return;
     if (window.notebook.nPages() > 1) return;
 
+    const widget = window.window.as(gtk.Widget);
+
     // Note: this doesn't properly take into account the window decorations.
     // I'm not currently sure how to do that.
-    c.gtk_widget_set_size_request(
-        @ptrCast(window.window),
-        @intCast(min.width),
-        @intCast(min.height),
-    );
+    widget.setSizeRequest(@intCast(min.width), @intCast(min.height));
 }
 
 pub fn grabFocus(self: *Surface) void {
@@ -947,8 +960,7 @@ pub fn grabFocus(self: *Surface) void {
         tab.focus_child = self;
     }
 
-    const widget = @as(*c.GtkWidget, @ptrCast(self.gl_area));
-    _ = c.gtk_widget_grab_focus(widget);
+    _ = self.gl_area.as(gtk.Widget).grabFocus();
 
     self.updateTitleLabels();
 }
@@ -964,8 +976,8 @@ fn updateTitleLabels(self: *Surface) void {
 
     // If we have a window and are focused, then we have to update the window title.
     if (self.container.window()) |window| {
-        const widget = @as(*c.GtkWidget, @ptrCast(self.gl_area));
-        if (c.gtk_widget_is_focus(widget) == 1) {
+        const widget = self.gl_area.as(gtk.Widget);
+        if (widget.isFocus() != 0) {
             // Changing the title somehow unhides our cursor.
             // https://github.com/ghostty-org/ghostty/issues/1419
             // I don't know a way around this yet. I've tried re-hiding the
@@ -1005,21 +1017,21 @@ pub fn setTitle(self: *Surface, slice: [:0]const u8, source: SetTitleSource) !vo
 
     // delay the title update to prevent flickering
     if (self.update_title_timer) |timer| {
-        if (c.g_source_remove(timer) == c.FALSE) {
+        if (glib.Source.remove(timer) == 0) {
             log.warn("unable to remove update title timer", .{});
         }
         self.update_title_timer = null;
     }
-    self.update_title_timer = c.g_timeout_add(75, updateTitleTimerExpired, self);
+    self.update_title_timer = glib.timeoutAdd(75, updateTitleTimerExpired, self);
 }
 
-fn updateTitleTimerExpired(ctx: ?*anyopaque) callconv(.C) c.gboolean {
-    const self: *Surface = @ptrCast(@alignCast(ctx));
+fn updateTitleTimerExpired(ud: ?*anyopaque) callconv(.C) c_int {
+    const self: *Surface = @ptrCast(@alignCast(ud.?));
 
     self.updateTitleLabels();
     self.update_title_timer = null;
 
-    return c.FALSE;
+    return 0;
 }
 
 pub fn getTitle(self: *Surface) ?[:0]const u8 {
@@ -1049,7 +1061,7 @@ pub fn promptTitle(self: *Surface) !void {
     if (!adwaita.versionAtLeast(1, 5, 0)) return;
     const window = self.container.window() orelse return;
 
-    var builder = Builder.init("prompt-title-dialog", .blp);
+    var builder = Builder.init("prompt-title-dialog", 1, 5, .blp);
     defer builder.deinit();
 
     const entry = builder.getObject(gtk.Entry, "title_entry").?;
@@ -1123,22 +1135,22 @@ pub fn setMouseShape(
         .zoom_out => "zoom-out",
     };
 
-    const cursor = c.gdk_cursor_new_from_name(name.ptr, null) orelse {
+    const cursor = gdk.Cursor.newFromName(name.ptr, null) orelse {
         log.warn("unsupported cursor name={s}", .{name});
         return;
     };
-    errdefer c.g_object_unref(cursor);
+    errdefer cursor.unref();
 
     // Set our new cursor. We only do this if the cursor we currently
     // have is NOT set to "none" because setting the cursor causes it
     // to become visible again.
-    const gl_area_widget: *c.GtkWidget = @ptrCast(@alignCast(self.gl_area));
-    if (c.gtk_widget_get_cursor(gl_area_widget) != self.app.cursor_none) {
-        c.gtk_widget_set_cursor(gl_area_widget, cursor);
+    const widget = self.gl_area.as(gtk.Widget);
+    if (widget.getCursor() != self.app.cursor_none) {
+        widget.setCursor(cursor);
     }
 
     // Free our existing cursor
-    if (self.cursor) |old| c.g_object_unref(old);
+    if (self.cursor) |old| old.unref();
     self.cursor = cursor;
 }
 
@@ -1147,15 +1159,15 @@ pub fn setMouseVisibility(self: *Surface, visible: bool) void {
     // Note in there that self.cursor or cursor_none may be null. That's
     // not a problem because NULL is a valid argument for set cursor
     // which means to just use the parent value.
-    const gl_area_widget: *c.GtkWidget = @ptrCast(@alignCast(self.gl_area));
+    const widget = self.gl_area.as(gtk.Widget);
 
     if (visible) {
-        c.gtk_widget_set_cursor(gl_area_widget, self.cursor);
+        widget.setCursor(self.cursor);
         return;
     }
 
     // Set our new cursor to the app "none" cursor
-    c.gtk_widget_set_cursor(gl_area_widget, self.app.cursor_none);
+    widget.setCursor(self.app.cursor_none);
 }
 
 pub fn mouseOverLink(self: *Surface, uri_: ?[]const u8) void {
@@ -1179,7 +1191,7 @@ pub fn mouseOverLink(self: *Surface, uri_: ?[]const u8) void {
         return;
     }
 
-    self.url_widget = URLWidget.init(self, uriZ);
+    self.url_widget = URLWidget.init(self.overlay, uriZ);
 }
 
 pub fn supportsClipboard(
@@ -1208,13 +1220,9 @@ pub fn clipboardRequest(
     ud_ptr.* = .{ .self = self, .state = state };
 
     // Start our async request
-    const clipboard = getClipboard(@ptrCast(self.gl_area), clipboard_type);
-    c.gdk_clipboard_read_text_async(
-        clipboard,
-        null,
-        &gtkClipboardRead,
-        ud_ptr,
-    );
+    const clipboard = getClipboard(@ptrCast(self.gl_area), clipboard_type) orelse return;
+
+    clipboard.readTextAsync(null, gtkClipboardRead, ud_ptr);
 }
 
 pub fn setClipboardString(
@@ -1224,14 +1232,15 @@ pub fn setClipboardString(
     confirm: bool,
 ) !void {
     if (!confirm) {
-        const clipboard = getClipboard(@ptrCast(self.gl_area), clipboard_type);
-        c.gdk_clipboard_set_text(clipboard, val.ptr);
+        const clipboard = getClipboard(@ptrCast(self.gl_area), clipboard_type) orelse return;
+        clipboard.setText(val);
+
         // We only toast if we are copying to the standard clipboard.
         if (clipboard_type == .standard and
             self.app.config.@"app-notifications".@"clipboard-copy")
         {
             if (self.container.window()) |window|
-                window.sendToast("Copied to clipboard");
+                window.sendToast(i18n._("Copied to clipboard"));
         }
         return;
     }
@@ -1241,6 +1250,7 @@ pub fn setClipboardString(
         val,
         &self.core_surface,
         .{ .osc_52_write = clipboard_type },
+        self.is_secure_input,
     ) catch |window_err| {
         log.err("failed to create clipboard confirmation window err={}", .{window_err});
     };
@@ -1252,27 +1262,25 @@ const ClipboardRequest = struct {
 };
 
 fn gtkClipboardRead(
-    source: ?*c.GObject,
-    res: ?*c.GAsyncResult,
+    source: ?*gobject.Object,
+    res: *gio.AsyncResult,
     ud: ?*anyopaque,
 ) callconv(.C) void {
+    const clipboard = gobject.ext.cast(gdk.Clipboard, source orelse return) orelse return;
     const req: *ClipboardRequest = @ptrCast(@alignCast(ud orelse return));
     const self = req.self;
     const alloc = self.app.core_app.alloc;
     defer alloc.destroy(req);
 
-    var gerr: ?*c.GError = null;
-    const cstr = c.gdk_clipboard_read_text_finish(
-        @ptrCast(source orelse return),
-        res,
-        &gerr,
-    );
+    var gerr: ?*glib.Error = null;
+    const cstr_ = clipboard.readTextFinish(res, &gerr);
     if (gerr) |err| {
-        defer c.g_error_free(err);
-        log.warn("failed to read clipboard err={s}", .{err.message});
+        defer err.free();
+        log.warn("failed to read clipboard err={s}", .{err.f_message orelse "(no message)"});
         return;
     }
-    defer c.g_free(cstr);
+    const cstr = cstr_ orelse return;
+    defer glib.free(cstr);
     const str = std.mem.sliceTo(cstr, 0);
 
     self.core_surface.completeClipboardRequest(
@@ -1289,6 +1297,7 @@ fn gtkClipboardRead(
                 str,
                 &self.core_surface,
                 req.state,
+                self.is_secure_input,
             ) catch |window_err| {
                 log.err("failed to create clipboard confirmation window err={}", .{window_err});
             };
@@ -1299,10 +1308,10 @@ fn gtkClipboardRead(
     };
 }
 
-fn getClipboard(widget: *c.GtkWidget, clipboard: apprt.Clipboard) ?*c.GdkClipboard {
+fn getClipboard(widget: *gtk.Widget, clipboard: apprt.Clipboard) ?*gdk.Clipboard {
     return switch (clipboard) {
-        .standard => c.gtk_widget_get_clipboard(widget),
-        .selection, .primary => c.gtk_widget_get_primary_clipboard(widget),
+        .standard => widget.getClipboard(),
+        .selection, .primary => widget.getPrimaryClipboard(),
     };
 }
 
@@ -1321,35 +1330,32 @@ pub fn showDesktopNotification(
         else => title,
     };
 
-    const notification = c.g_notification_new(t.ptr);
-    defer c.g_object_unref(notification);
-    c.g_notification_set_body(notification, body.ptr);
+    const notification = gio.Notification.new(t);
+    defer notification.unref();
+    notification.setBody(body);
 
-    const icon = c.g_themed_icon_new(build_config.bundle_id);
-    defer c.g_object_unref(icon);
-    c.g_notification_set_icon(notification, icon);
+    const icon = gio.ThemedIcon.new(build_config.bundle_id);
+    defer icon.unref();
 
-    const pointer = c.g_variant_new_uint64(@intFromPtr(&self.core_surface));
-    c.g_notification_set_default_action_and_target_value(
-        notification,
-        "app.present-surface",
-        pointer,
-    );
+    notification.setIcon(icon);
 
-    const g_app: *c.GApplication = @ptrCast(self.app.app);
+    const pointer = glib.Variant.newUint64(@intFromPtr(&self.core_surface));
+    notification.setDefaultActionAndTargetValue("app.present-surface", pointer);
+
+    const app = self.app.app.as(gio.Application);
 
     // We set the notification ID to the body content. If the content is the
     // same, this notification may replace a previous notification
-    c.g_application_send_notification(g_app, body.ptr, notification);
+    app.sendNotification(body.ptr, notification);
 }
 
-fn gtkRealize(area: *c.GtkGLArea, ud: ?*anyopaque) callconv(.C) void {
+fn gtkRealize(gl_area: *gtk.GLArea, self: *Surface) callconv(.C) void {
     log.debug("gl surface realized", .{});
 
     // We need to make the context current so we can call GL functions.
-    c.gtk_gl_area_make_current(area);
-    if (c.gtk_gl_area_get_error(area)) |err| {
-        log.err("surface failed to realize: {s}", .{err.*.message});
+    gl_area.makeCurrent();
+    if (gl_area.getError()) |err| {
+        log.err("surface failed to realize: {s}", .{err.f_message orelse "(no message)"});
         log.warn("this error is usually due to a driver or gtk bug", .{});
         log.warn("this is a common cause of this issue: https://gitlab.gnome.org/GNOME/gtk/-/issues/4950", .{});
         return;
@@ -1357,7 +1363,6 @@ fn gtkRealize(area: *c.GtkGLArea, ud: ?*anyopaque) callconv(.C) void {
 
     // realize means that our OpenGL context is ready, so we can now
     // initialize the core surface which will setup the renderer.
-    const self = userdataSelf(ud.?);
     self.realize() catch |err| {
         // TODO: we need to destroy the GL area here.
         log.err("surface failed to realize: {}", .{err});
@@ -1367,28 +1372,21 @@ fn gtkRealize(area: *c.GtkGLArea, ud: ?*anyopaque) callconv(.C) void {
     // When we have a realized surface, we also attach our input method context.
     // We do this here instead of init because this allows us to release the ref
     // to the GLArea when we unrealized.
-    c.gtk_im_context_set_client_widget(self.im_context, @ptrCast(@alignCast(self.overlay)));
+    self.im_context.as(gtk.IMContext).setClientWidget(self.overlay.as(gtk.Widget));
 }
 
 /// This is called when the underlying OpenGL resources must be released.
 /// This is usually due to the OpenGL area changing GDK surfaces.
-fn gtkUnrealize(area: *c.GtkGLArea, ud: ?*anyopaque) callconv(.C) void {
-    _ = area;
-
+fn gtkUnrealize(_: *gtk.GLArea, self: *Surface) callconv(.C) void {
     log.debug("gl surface unrealized", .{});
-    const self = userdataSelf(ud.?);
     self.core_surface.renderer.displayUnrealized();
 
     // See gtkRealize for why we do this here.
-    c.gtk_im_context_set_client_widget(self.im_context, null);
+    self.im_context.as(gtk.IMContext).setClientWidget(null);
 }
 
 /// render signal
-fn gtkRender(area: *c.GtkGLArea, ctx: *c.GdkGLContext, ud: ?*anyopaque) callconv(.C) c.gboolean {
-    _ = area;
-    _ = ctx;
-
-    const self = userdataSelf(ud.?);
+fn gtkRender(_: *gtk.GLArea, _: *gdk.GLContext, self: *Surface) callconv(.C) c_int {
     self.render() catch |err| {
         log.err("surface failed to render: {}", .{err});
         return 0;
@@ -1397,21 +1395,21 @@ fn gtkRender(area: *c.GtkGLArea, ctx: *c.GdkGLContext, ud: ?*anyopaque) callconv
     return 1;
 }
 
-/// render signal
-fn gtkResize(area: *c.GtkGLArea, width: c.gint, height: c.gint, ud: ?*anyopaque) callconv(.C) void {
-    const self = userdataSelf(ud.?);
-
+/// resize signal
+fn gtkResize(gl_area: *gtk.GLArea, width: c_int, height: c_int, self: *Surface) callconv(.C) void {
     // Some debug output to help understand what GTK is telling us.
     {
         const scale_factor = scale: {
-            const widget = @as(*c.GtkWidget, @ptrCast(area));
-            break :scale c.gtk_widget_get_scale_factor(widget);
+            const widget = gl_area.as(gtk.Widget);
+            break :scale widget.getScaleFactor();
         };
 
         const window_scale_factor = scale: {
             const window = self.container.window() orelse break :scale 0;
-            const gdk_surface = c.gtk_native_get_surface(@ptrCast(window.window));
-            break :scale c.gdk_surface_get_scale_factor(gdk_surface);
+            const gtk_window = window.window.as(gtk.Window);
+            const gtk_native = gtk_window.as(gtk.Native);
+            const gdk_surface = gtk_native.getSurface() orelse break :scale 0;
+            break :scale gdk_surface.getScaleFactor();
         };
 
         log.debug("gl resize width={} height={} scale={} window_scale={}", .{
@@ -1454,11 +1452,9 @@ fn gtkResize(area: *c.GtkGLArea, width: c.gint, height: c.gint, ud: ?*anyopaque)
 }
 
 /// "destroy" signal for surface
-fn gtkDestroy(v: *c.GtkWidget, ud: ?*anyopaque) callconv(.C) void {
-    _ = v;
+fn gtkDestroy(_: *gtk.GLArea, self: *Surface) callconv(.C) void {
     log.debug("gl destroy", .{});
 
-    const self = userdataSelf(ud.?);
     const alloc = self.app.core_app.alloc;
     self.deinit();
     alloc.destroy(self);
@@ -1467,14 +1463,15 @@ fn gtkDestroy(v: *c.GtkWidget, ud: ?*anyopaque) callconv(.C) void {
 /// Scale x/y by the GDK device scale.
 fn scaledCoordinates(
     self: *const Surface,
-    x: c.gdouble,
-    y: c.gdouble,
+    x: f64,
+    y: f64,
 ) struct {
-    x: c.gdouble,
-    y: c.gdouble,
+    x: f64,
+    y: f64,
 } {
+    const gl_are_widget = self.gl_area.as(gtk.Widget);
     const scale_factor: f64 = @floatFromInt(
-        c.gtk_widget_get_scale_factor(@ptrCast(self.gl_area)),
+        gl_are_widget.getScaleFactor(),
     );
 
     return .{
@@ -1484,23 +1481,22 @@ fn scaledCoordinates(
 }
 
 fn gtkMouseDown(
-    gesture: *c.GtkGestureClick,
-    _: c.gint,
-    x: c.gdouble,
-    y: c.gdouble,
-    ud: ?*anyopaque,
+    gesture: *gtk.GestureClick,
+    _: c_int,
+    x: f64,
+    y: f64,
+    self: *Surface,
 ) callconv(.C) void {
-    const event = c.gtk_event_controller_get_current_event(@ptrCast(gesture)) orelse return;
+    const event = gesture.as(gtk.EventController).getCurrentEvent() orelse return;
 
-    const self = userdataSelf(ud.?);
-    const gtk_mods = c.gdk_event_get_modifier_state(event);
+    const gtk_mods = event.getModifierState();
 
-    const button = translateMouseButton(c.gtk_gesture_single_get_current_button(@ptrCast(gesture)));
+    const button = translateMouseButton(gesture.as(gtk.GestureSingle).getCurrentButton());
     const mods = gtk_key.translateMods(gtk_mods);
 
     // If we don't have focus, grab it.
-    const gl_widget = @as(*c.GtkWidget, @ptrCast(self.gl_area));
-    if (c.gtk_widget_has_focus(gl_widget) == 0) {
+    const gl_area_widget = self.gl_area.as(gtk.Widget);
+    if (gl_area_widget.hasFocus() == 0) {
         self.grabFocus();
     }
 
@@ -1518,20 +1514,19 @@ fn gtkMouseDown(
 }
 
 fn gtkMouseUp(
-    gesture: *c.GtkGestureClick,
-    _: c.gint,
-    _: c.gdouble,
-    _: c.gdouble,
-    ud: ?*anyopaque,
+    gesture: *gtk.GestureClick,
+    _: c_int,
+    _: f64,
+    _: f64,
+    self: *Surface,
 ) callconv(.C) void {
-    const event = c.gtk_event_controller_get_current_event(@ptrCast(gesture)) orelse return;
+    const event = gesture.as(gtk.EventController).getCurrentEvent() orelse return;
 
-    const gtk_mods = c.gdk_event_get_modifier_state(event);
+    const gtk_mods = event.getModifierState();
 
-    const button = translateMouseButton(c.gtk_gesture_single_get_current_button(@ptrCast(gesture)));
+    const button = translateMouseButton(gesture.as(gtk.GestureSingle).getCurrentButton());
     const mods = gtk_key.translateMods(gtk_mods);
 
-    const self = userdataSelf(ud.?);
     _ = self.core_surface.mouseButtonCallback(.release, button, mods) catch |err| {
         log.err("error in key callback err={}", .{err});
         return;
@@ -1539,14 +1534,13 @@ fn gtkMouseUp(
 }
 
 fn gtkMouseMotion(
-    ec: *c.GtkEventControllerMotion,
-    x: c.gdouble,
-    y: c.gdouble,
-    ud: ?*anyopaque,
+    ec: *gtk.EventControllerMotion,
+    x: f64,
+    y: f64,
+    self: *Surface,
 ) callconv(.C) void {
-    const event = c.gtk_event_controller_get_current_event(@ptrCast(ec)) orelse return;
+    const event = ec.as(gtk.EventController).getCurrentEvent() orelse return;
 
-    const self = userdataSelf(ud.?);
     const scaled = self.scaledCoordinates(x, y);
 
     const pos: apprt.CursorPos = .{
@@ -1568,8 +1562,8 @@ fn gtkMouseMotion(
 
     if (!is_cursor_still) {
         // If we don't have focus, and we want it, grab it.
-        const gl_widget = @as(*c.GtkWidget, @ptrCast(self.gl_area));
-        if (c.gtk_widget_has_focus(gl_widget) == 0 and self.app.config.@"focus-follows-mouse") {
+        const gl_area_widget = self.gl_area.as(gtk.Widget);
+        if (gl_area_widget.hasFocus() == 0 and self.app.config.@"focus-follows-mouse") {
             self.grabFocus();
         }
 
@@ -1577,7 +1571,7 @@ fn gtkMouseMotion(
         self.cursor_pos = pos;
 
         // Get our modifiers
-        const gtk_mods = c.gdk_event_get_modifier_state(event);
+        const gtk_mods = event.getModifierState();
         const mods = gtk_key.translateMods(gtk_mods);
 
         self.core_surface.cursorPosCallback(self.cursor_pos, mods) catch |err| {
@@ -1588,15 +1582,13 @@ fn gtkMouseMotion(
 }
 
 fn gtkMouseLeave(
-    ec: *c.GtkEventControllerMotion,
-    ud: ?*anyopaque,
+    ec_motion: *gtk.EventControllerMotion,
+    self: *Surface,
 ) callconv(.C) void {
-    const event = c.gtk_event_controller_get_current_event(@ptrCast(ec)) orelse return;
-
-    const self = userdataSelf(ud.?);
+    const event = ec_motion.as(gtk.EventController).getCurrentEvent() orelse return;
 
     // Get our modifiers
-    const gtk_mods = c.gdk_event_get_modifier_state(event);
+    const gtk_mods = event.getModifierState();
     const mods = gtk_key.translateMods(gtk_mods);
     self.core_surface.cursorPosCallback(.{ .x = -1, .y = -1 }, mods) catch |err| {
         log.err("error in cursor pos callback err={}", .{err});
@@ -1604,64 +1596,79 @@ fn gtkMouseLeave(
     };
 }
 
-fn gtkMouseScroll(
-    _: *c.GtkEventControllerScroll,
-    x: c.gdouble,
-    y: c.gdouble,
-    ud: ?*anyopaque,
+fn gtkMouseScrollPrecisionBegin(
+    _: *gtk.EventControllerScroll,
+    self: *Surface,
 ) callconv(.C) void {
-    const self = userdataSelf(ud.?);
+    self.precision_scroll = true;
+}
+
+fn gtkMouseScrollPrecisionEnd(
+    _: *gtk.EventControllerScroll,
+    self: *Surface,
+) callconv(.C) void {
+    self.precision_scroll = false;
+}
+
+fn gtkMouseScroll(
+    _: *gtk.EventControllerScroll,
+    x: f64,
+    y: f64,
+    self: *Surface,
+) callconv(.C) c_int {
     const scaled = self.scaledCoordinates(x, y);
 
     // GTK doesn't support any of the scroll mods.
-    const scroll_mods: input.ScrollMods = .{};
+    const scroll_mods: input.ScrollMods = .{ .precision = self.precision_scroll };
+    // Multiply precision scrolls by 10 to get a better response from touchpad scrolling
+    const multiplier: f64 = if (self.precision_scroll) 10.0 else 1.0;
 
     self.core_surface.scrollCallback(
         // We invert because we apply natural scrolling to the values.
         // This behavior has existed for years without Linux users complaining
         // but I suspect we'll have to make this configurable in the future
         // or read a system setting.
-        scaled.x * -1,
-        scaled.y * -1,
+        scaled.x * -1 * multiplier,
+        scaled.y * -1 * multiplier,
         scroll_mods,
     ) catch |err| {
         log.err("error in scroll callback err={}", .{err});
-        return;
+        return 0;
     };
+
+    return 1;
 }
 
 fn gtkKeyPressed(
-    ec_key: *c.GtkEventControllerKey,
-    keyval: c.guint,
-    keycode: c.guint,
-    gtk_mods: c.GdkModifierType,
-    ud: ?*anyopaque,
-) callconv(.C) c.gboolean {
-    const self = userdataSelf(ud.?);
-    return if (self.keyEvent(
+    ec_key: *gtk.EventControllerKey,
+    keyval: c_uint,
+    keycode: c_uint,
+    gtk_mods: gdk.ModifierType,
+    self: *Surface,
+) callconv(.C) c_int {
+    return @intFromBool(self.keyEvent(
         .press,
         ec_key,
         keyval,
         keycode,
         gtk_mods,
-    )) 1 else 0;
+    ));
 }
 
 fn gtkKeyReleased(
-    ec_key: *c.GtkEventControllerKey,
-    keyval: c.guint,
-    keycode: c.guint,
-    state: c.GdkModifierType,
-    ud: ?*anyopaque,
-) callconv(.C) c.gboolean {
-    const self = userdataSelf(ud.?);
-    return if (self.keyEvent(
+    ec_key: *gtk.EventControllerKey,
+    keyval: c_uint,
+    keycode: c_uint,
+    state: gdk.ModifierType,
+    self: *Surface,
+) callconv(.C) void {
+    _ = self.keyEvent(
         .release,
         ec_key,
         keyval,
         keycode,
         state,
-    )) 1 else 0;
+    );
 }
 
 /// Key press event (press or release).
@@ -1697,15 +1704,14 @@ fn gtkKeyReleased(
 pub fn keyEvent(
     self: *Surface,
     action: input.Action,
-    ec_key: *c.GtkEventControllerKey,
-    keyval: c.guint,
-    keycode: c.guint,
-    gtk_mods: c.GdkModifierType,
+    ec_key: *gtk.EventControllerKey,
+    keyval: c_uint,
+    keycode: c_uint,
+    gtk_mods: gdk.ModifierType,
 ) bool {
     // log.warn("GTKIM: keyEvent action={}", .{action});
-    const event = c.gtk_event_controller_get_current_event(
-        @ptrCast(ec_key),
-    ) orelse return false;
+    const event = ec_key.as(gtk.EventController).getCurrentEvent() orelse return false;
+    const key_event = gobject.ext.cast(gdk.KeyEvent, event) orelse return false;
 
     // The block below is all related to input method handling. See the function
     // comment for some high level details and then the comments within
@@ -1715,11 +1721,11 @@ pub fn keyEvent(
         // where the cursor is so it can render the dropdowns in the correct
         // place.
         const ime_point = self.core_surface.imePoint();
-        c.gtk_im_context_set_cursor_location(self.im_context, &.{
-            .x = @intFromFloat(ime_point.x),
-            .y = @intFromFloat(ime_point.y),
-            .width = 1,
-            .height = 1,
+        self.im_context.as(gtk.IMContext).setCursorLocation(&.{
+            .f_x = @intFromFloat(ime_point.x),
+            .f_y = @intFromFloat(ime_point.y),
+            .f_width = 1,
+            .f_height = 1,
         });
 
         // We note that we're in a keypress because we want some logic to
@@ -1755,10 +1761,7 @@ pub fn keyEvent(
         //   triggered despite being technically consumed. At the time of
         //   writing, both Kitty and Alacritty have the same behavior. I
         //   know of no way to fix this.
-        const im_handled = c.gtk_im_context_filter_keypress(
-            self.im_context,
-            event,
-        ) != 0;
+        const im_handled = self.im_context.as(gtk.IMContext).filterKeypress(event) != 0;
         // log.warn("GTKIM: im_handled={} im_len={} im_composing={}", .{
         //     im_handled,
         //     self.im_len,
@@ -1807,10 +1810,10 @@ pub fn keyEvent(
     defer self.im_len = 0;
 
     // Get the keyvals for this event.
-    const keyval_unicode = c.gdk_keyval_to_unicode(keyval);
+    const keyval_unicode = gdk.keyvalToUnicode(keyval);
     const keyval_unicode_unshifted: u21 = gtk_key.keyvalUnicodeUnshifted(
-        @ptrCast(self.gl_area),
-        event,
+        self.gl_area.as(gtk.Widget),
+        key_event,
         keycode,
     );
 
@@ -1831,9 +1834,12 @@ pub fn keyEvent(
 
     // Get our consumed modifiers
     const consumed_mods: input.Mods = consumed: {
-        const raw = c.gdk_key_event_get_consumed_modifiers(event);
-        const masked = raw & c.GDK_MODIFIER_MASK;
-        break :consumed gtk_key.translateMods(masked);
+        const T = @typeInfo(gdk.ModifierType);
+        std.debug.assert(T.@"struct".layout == .@"packed");
+        const I = T.@"struct".backing_integer.?;
+
+        const masked = @as(I, @bitCast(key_event.getConsumedModifiers())) & @as(I, gdk.MODIFIER_MASK);
+        break :consumed gtk_key.translateMods(@bitCast(masked));
     };
 
     // If we're not in a dead key state, we want to translate our text
@@ -1932,7 +1938,7 @@ pub fn keyEvent(
             // because there is other IME state that we want to preserve,
             // such as quotation mark ordering for Chinese input.
             if (self.im_composing) {
-                c.gtk_im_context_reset(self.im_context);
+                self.im_context.as(gtk.IMContext).reset();
                 self.core_surface.preeditCallback(null) catch {};
             }
 
@@ -1944,11 +1950,10 @@ pub fn keyEvent(
 }
 
 fn gtkInputPreeditStart(
-    _: *c.GtkIMContext,
-    ud: ?*anyopaque,
+    _: *gtk.IMMulticontext,
+    self: *Surface,
 ) callconv(.C) void {
     // log.warn("GTKIM: preedit start", .{});
-    const self = userdataSelf(ud.?);
 
     // Start our composing state for the input method and reset our
     // input buffer to empty.
@@ -1957,15 +1962,22 @@ fn gtkInputPreeditStart(
 }
 
 fn gtkInputPreeditChanged(
-    ctx: *c.GtkIMContext,
-    ud: ?*anyopaque,
+    ctx: *gtk.IMMulticontext,
+    self: *Surface,
 ) callconv(.C) void {
-    const self = userdataSelf(ud.?);
+    // Any preedit change should mark that we're composing. Its possible this
+    // is false using fcitx5-hangul and typing "dkssud<space>" ("안녕"). The
+    // second "s" results in a "commit" for "안" which sets composing to false,
+    // but then immediately sends a preedit change for the next symbol. With
+    // composing set to false we won't commit this text. Therefore, we must
+    // ensure it is set here.
+    self.im_composing = true;
 
     // Get our pre-edit string that we'll use to show the user.
-    var buf: [*c]u8 = undefined;
-    _ = c.gtk_im_context_get_preedit_string(ctx, &buf, null, null);
-    defer c.g_free(buf);
+    var buf: [*:0]u8 = undefined;
+    ctx.as(gtk.IMContext).getPreeditString(&buf, null, null);
+    defer glib.free(buf);
+
     const str = std.mem.sliceTo(buf, 0);
 
     // Update our preedit state in Ghostty core
@@ -1976,11 +1988,10 @@ fn gtkInputPreeditChanged(
 }
 
 fn gtkInputPreeditEnd(
-    _: *c.GtkIMContext,
-    ud: ?*anyopaque,
+    _: *gtk.IMMulticontext,
+    self: *Surface,
 ) callconv(.C) void {
     // log.warn("GTKIM: preedit end", .{});
-    const self = userdataSelf(ud.?);
 
     // End our composing state for GTK, allowing us to commit the text.
     self.im_composing = false;
@@ -1992,11 +2003,10 @@ fn gtkInputPreeditEnd(
 }
 
 fn gtkInputCommit(
-    _: *c.GtkIMContext,
+    _: *gtk.IMMulticontext,
     bytes: [*:0]u8,
-    ud: ?*anyopaque,
+    self: *Surface,
 ) callconv(.C) void {
-    const self = userdataSelf(ud.?);
     const str = std.mem.sliceTo(bytes, 0);
 
     // log.debug("GTKIM: input commit composing={} keyevent={} str={s}", .{
@@ -2071,16 +2081,15 @@ fn gtkInputCommit(
     };
 }
 
-fn gtkFocusEnter(_: *c.GtkEventControllerFocus, ud: ?*anyopaque) callconv(.C) void {
-    const self = userdataSelf(ud.?);
+fn gtkFocusEnter(_: *gtk.EventControllerFocus, self: *Surface) callconv(.C) void {
     if (!self.realized) return;
 
     // Notify our IM context
-    c.gtk_im_context_focus_in(self.im_context);
+    self.im_context.as(gtk.IMContext).focusIn();
 
     // Remove the unfocused widget overlay, if we have one
     if (self.unfocused_widget) |widget| {
-        c.gtk_overlay_remove_overlay(self.overlay, widget);
+        self.overlay.removeOverlay(widget);
         self.unfocused_widget = null;
     }
 
@@ -2097,12 +2106,11 @@ fn gtkFocusEnter(_: *c.GtkEventControllerFocus, ud: ?*anyopaque) callconv(.C) vo
     };
 }
 
-fn gtkFocusLeave(_: *c.GtkEventControllerFocus, ud: ?*anyopaque) callconv(.C) void {
-    const self = userdataSelf(ud.?);
+fn gtkFocusLeave(_: *gtk.EventControllerFocus, self: *Surface) callconv(.C) void {
     if (!self.realized) return;
 
     // Notify our IM context
-    c.gtk_im_context_focus_out(self.im_context);
+    self.im_context.as(gtk.IMContext).focusOut();
 
     // We only try dimming the surface if we are a split
     switch (self.container) {
@@ -2118,8 +2126,8 @@ fn gtkFocusLeave(_: *c.GtkEventControllerFocus, ud: ?*anyopaque) callconv(.C) vo
     };
 }
 
-/// Adds the unfocused_widget to the overlay. If the unfocused_widget has already been added, this
-/// is a no-op
+/// Adds the unfocused_widget to the overlay. If the unfocused_widget has
+/// already been added, this is a no-op.
 pub fn dimSurface(self: *Surface) void {
     _ = self.container.window() orelse {
         log.warn("dimSurface invalid for container={}", .{self.container});
@@ -2130,29 +2138,23 @@ pub fn dimSurface(self: *Surface) void {
     // This means we got unfocused due to it opening.
     if (self.context_menu.isVisible()) return;
 
-    if (self.unfocused_widget != null) return;
-    self.unfocused_widget = c.gtk_drawing_area_new();
-    c.gtk_widget_add_css_class(self.unfocused_widget.?, "unfocused-split");
-    c.gtk_overlay_add_overlay(self.overlay, self.unfocused_widget.?);
-}
+    // If there's already an unfocused_widget do nothing;
+    if (self.unfocused_widget) |_| return;
 
-fn gtkCloseConfirmation(
-    alert: *c.GtkMessageDialog,
-    response: c.gint,
-    ud: ?*anyopaque,
-) callconv(.C) void {
-    c.gtk_window_destroy(@ptrCast(alert));
-    if (response == c.GTK_RESPONSE_YES) {
-        const self = userdataSelf(ud.?);
-        self.container.remove();
-    }
+    self.unfocused_widget = unfocused_widget: {
+        const drawing_area = gtk.DrawingArea.new();
+        const unfocused_widget = drawing_area.as(gtk.Widget);
+        unfocused_widget.addCssClass("unfocused-split");
+        self.overlay.addOverlay(unfocused_widget);
+        break :unfocused_widget unfocused_widget;
+    };
 }
 
 fn userdataSelf(ud: *anyopaque) *Surface {
     return @ptrCast(@alignCast(ud));
 }
 
-fn translateMouseButton(button: c.guint) input.MouseButton {
+fn translateMouseButton(button: c_uint) input.MouseButton {
     return switch (button) {
         1 => .left,
         2 => .middle,
@@ -2175,7 +2177,7 @@ pub fn present(self: *Surface) void {
             if (window.notebook.getTabPosition(tab)) |position|
                 _ = window.notebook.gotoNthTab(position);
         }
-        c.gtk_window_present(window.window);
+        window.window.as(gtk.Window).present();
     }
 
     self.grabFocus();
@@ -2203,12 +2205,12 @@ pub fn setSplitZoom(self: *Surface, new_split_zoom: bool) void {
 
     if (new_split_zoom) {
         self.detachFromSplit();
-        c.gtk_box_remove(tab.box, tab_widget);
-        c.gtk_box_append(tab.box, surface_widget);
+        tab.box.remove(tab_widget);
+        tab.box.append(surface_widget);
     } else {
-        c.gtk_box_remove(tab.box, surface_widget);
+        tab.box.remove(surface_widget);
         self.attachToSplit();
-        c.gtk_box_append(tab.box, tab_widget);
+        tab.box.append(tab_widget);
     }
 
     self.zoomed_in = new_split_zoom;
@@ -2221,18 +2223,15 @@ pub fn toggleSplitZoom(self: *Surface) void {
 
 /// Handle items being dropped on our surface.
 fn gtkDrop(
-    _: *c.GtkDropTarget,
-    value: *c.GValue,
-    x: f64,
-    y: f64,
-    ud: ?*anyopaque,
-) callconv(.C) c.gboolean {
-    _ = x;
-    _ = y;
-    const self = userdataSelf(ud.?);
+    _: *gtk.DropTarget,
+    value: *gobject.Value,
+    _: f64,
+    _: f64,
+    self: *Surface,
+) callconv(.C) c_int {
     const alloc = self.app.core_app.alloc;
 
-    if (g_value_holds(value, c.G_TYPE_BOXED)) {
+    if (g_value_holds(value, gdk.FileList.getGObjectType())) {
         var data = std.ArrayList(u8).init(alloc);
         defer data.deinit();
 
@@ -2241,12 +2240,13 @@ fn gtkDrop(
         };
         const writer = shell_escape_writer.writer();
 
-        const fl: *c.GdkFileList = @ptrCast(c.g_value_get_boxed(value));
-        var l = c.gdk_file_list_get_files(fl);
+        const unboxed = value.getBoxed() orelse return 0;
+        const fl: *gdk.FileList = @ptrCast(@alignCast(unboxed));
+        var list: ?*glib.SList = fl.getFiles();
 
-        while (l != null) : (l = l.*.next) {
-            const file: *c.GFile = @ptrCast(l.*.data);
-            const path = c.g_file_get_path(file) orelse continue;
+        while (list) |item| : (list = item.f_next) {
+            const file: *gio.File = @ptrCast(@alignCast(item.f_data orelse continue));
+            const path = file.getPath() orelse continue;
 
             writer.writeAll(std.mem.span(path)) catch |err| {
                 log.err("unable to write path to buffer: {}", .{err});
@@ -2260,7 +2260,7 @@ fn gtkDrop(
 
         const string = data.toOwnedSliceSentinel(0) catch |err| {
             log.err("unable to convert to a slice: {}", .{err});
-            return 1;
+            return 0;
         };
         defer alloc.free(string);
 
@@ -2269,9 +2269,41 @@ fn gtkDrop(
         return 1;
     }
 
-    if (g_value_holds(value, c.G_TYPE_STRING)) {
-        if (c.g_value_get_string(value)) |string| {
-            self.doPaste(std.mem.span(string));
+    if (g_value_holds(value, gio.File.getGObjectType())) {
+        const object = value.getObject() orelse return 0;
+        const file = gobject.ext.cast(gio.File, object) orelse return 0;
+        const path = file.getPath() orelse return 0;
+        var data = std.ArrayList(u8).init(alloc);
+        defer data.deinit();
+
+        var shell_escape_writer: internal_os.ShellEscapeWriter(std.ArrayList(u8).Writer) = .{
+            .child_writer = data.writer(),
+        };
+        const writer = shell_escape_writer.writer();
+        writer.writeAll(std.mem.span(path)) catch |err| {
+            log.err("unable to write path to buffer: {}", .{err});
+            return 0;
+        };
+        writer.writeAll("\n") catch |err| {
+            log.err("unable to write to buffer: {}", .{err});
+            return 0;
+        };
+
+        const string = data.toOwnedSliceSentinel(0) catch |err| {
+            log.err("unable to convert to a slice: {}", .{err});
+            return 0;
+        };
+        defer alloc.free(string);
+
+        self.doPaste(string);
+
+        return 1;
+    }
+
+    if (g_value_holds(value, gobject.ext.types.string)) {
+        if (value.getString()) |string| {
+            const text = std.mem.span(string);
+            if (text.len > 0) self.doPaste(text);
         }
         return 1;
     }
@@ -2291,6 +2323,7 @@ fn doPaste(self: *Surface, data: [:0]const u8) void {
                 data,
                 &self.core_surface,
                 .paste,
+                self.is_secure_input,
             ) catch |window_err| {
                 log.err("failed to create clipboard confirmation window err={}", .{window_err});
             };
@@ -2324,6 +2357,7 @@ pub fn defaultTermioEnv(self: *Surface) !std.process.EnvMap {
         env.remove("VK_LAYER_PATH");
         env.remove("XLOCALEDIR");
         env.remove("GDK_PIXBUF_MODULEDIR");
+        env.remove("GDK_PIXBUF_MODULE_FILE");
         env.remove("GTK_PATH");
     }
 
@@ -2338,10 +2372,10 @@ pub fn defaultTermioEnv(self: *Surface) !std.process.EnvMap {
 
 /// Check a GValue to see what's type its wrapping. This is equivalent to GTK's
 /// `G_VALUE_HOLDS` macro but Zig's C translator does not like it.
-fn g_value_holds(value_: ?*c.GValue, g_type: c.GType) bool {
+fn g_value_holds(value_: ?*gobject.Value, g_type: gobject.Type) bool {
     if (value_) |value| {
-        if (value.*.g_type == g_type) return true;
-        return c.g_type_check_value_holds(value, g_type) != 0;
+        if (value.f_g_type == g_type) return true;
+        return gobject.typeCheckValueHolds(value, g_type) != 0;
     }
     return false;
 }
@@ -2380,5 +2414,13 @@ fn gtkPromptTitleResponse(source_object: ?*gobject.Object, result: *gio.AsyncRes
                 log.err("failed to set title={}", .{err});
             };
         }
+    }
+}
+
+pub fn setSecureInput(self: *Surface, value: apprt.action.SecureInput) void {
+    switch (value) {
+        .on => self.is_secure_input = true,
+        .off => self.is_secure_input = false,
+        .toggle => self.is_secure_input = !self.is_secure_input,
     }
 }

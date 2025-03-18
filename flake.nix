@@ -25,10 +25,10 @@
       };
     };
 
-    zig2nix = {
-      url = "github:jcollie/zig2nix?ref=c311d8e77a6ee0d995f40a6e10a89a3a4ab04f9a";
+    zon2nix = {
+      url = "github:jcollie/zon2nix?ref=56c159be489cc6c0e73c3930bd908ddc6fe89613";
       inputs = {
-        nixpkgs.follows = "nixpkgs-stable";
+        nixpkgs.follows = "nixpkgs-unstable";
         flake-utils.follows = "flake-utils";
       };
     };
@@ -39,7 +39,7 @@
     nixpkgs-unstable,
     nixpkgs-stable,
     zig,
-    zig2nix,
+    zon2nix,
     ...
   }:
     builtins.foldl' nixpkgs-stable.lib.recursiveUpdate {} (
@@ -49,9 +49,9 @@
           pkgs-unstable = nixpkgs-unstable.legacyPackages.${system};
         in {
           devShell.${system} = pkgs-stable.callPackage ./nix/devShell.nix {
-            zig = zig.packages.${system}."0.13.0";
+            zig = zig.packages.${system}."0.14.0";
             wraptest = pkgs-stable.callPackage ./nix/wraptest.nix {};
-            zig2nix = zig2nix;
+            zon2nix = zon2nix;
           };
 
           packages.${system} = let
@@ -61,10 +61,10 @@
               revision = self.shortRev or self.dirtyShortRev or "dirty";
             };
           in rec {
-            deps = pkgs-stable.callPackage ./build.zig.zon.nix {};
-            ghostty-debug = pkgs-stable.callPackage ./nix/package.nix (mkArgs "Debug");
-            ghostty-releasesafe = pkgs-stable.callPackage ./nix/package.nix (mkArgs "ReleaseSafe");
-            ghostty-releasefast = pkgs-stable.callPackage ./nix/package.nix (mkArgs "ReleaseFast");
+            deps = pkgs-unstable.callPackage ./build.zig.zon.nix {};
+            ghostty-debug = pkgs-unstable.callPackage ./nix/package.nix (mkArgs "Debug");
+            ghostty-releasesafe = pkgs-unstable.callPackage ./nix/package.nix (mkArgs "ReleaseSafe");
+            ghostty-releasefast = pkgs-unstable.callPackage ./nix/package.nix (mkArgs "ReleaseFast");
 
             ghostty = ghostty-releasefast;
             default = ghostty;
@@ -77,14 +77,14 @@
               module: let
                 vm = import ./nix/vm/create.nix {
                   inherit system module;
-                  nixpkgs = nixpkgs-stable;
+                  nixpkgs = nixpkgs-unstable;
                   overlay = self.overlays.debug;
                 };
-                program = pkgs-stable.writeShellScript "run-ghostty-vm" ''
+                program = pkgs-unstable.writeShellScript "run-ghostty-vm" ''
                   SHARED_DIR=$(pwd)
                   export SHARED_DIR
 
-                  ${pkgs-stable.lib.getExe vm.config.system.build.vm} "$@"
+                  ${pkgs-unstable.lib.getExe vm.config.system.build.vm} "$@"
                 '';
               in {
                 type = "app";

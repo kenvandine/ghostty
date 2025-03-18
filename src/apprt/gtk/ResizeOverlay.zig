@@ -114,7 +114,7 @@ fn gtkUpdate(ud: ?*anyopaque) callconv(.C) c_int {
     var buf: [32]u8 = undefined;
     const text = std.fmt.bufPrintZ(
         &buf,
-        "{d}c ⨯ {d}r",
+        "{d} x {d}",
         .{
             grid_size.columns,
             grid_size.rows,

@@ -1,7 +1,9 @@
 const std = @import("std");
 const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
-const c = @import("c.zig").c;
+
+const gdk = @import("gdk");
+
 const Config = @import("../../config.zig").Config;
 const input = @import("../../input.zig");
 const key = @import("key.zig");
@@ -26,11 +28,11 @@ pub const App = union(Protocol) {
 
     pub fn init(
         alloc: Allocator,
-        gdk_display: *c.GdkDisplay,
+        gdk_display: *gdk.Display,
         app_id: [:0]const u8,
         config: *const Config,
     ) !App {
-        inline for (@typeInfo(App).Union.fields) |field| {
+        inline for (@typeInfo(App).@"union".fields) |field| {
             if (try field.type.init(
                 alloc,
                 gdk_display,
@@ -52,12 +54,29 @@ pub const App = union(Protocol) {
 
     pub fn eventMods(
         self: *App,
-        device: ?*c.GdkDevice,
-        gtk_mods: c.GdkModifierType,
+        device: ?*gdk.Device,
+        gtk_mods: gdk.ModifierType,
     ) input.Mods {
         return switch (self.*) {
             inline else => |*v| v.eventMods(device, gtk_mods),
         } orelse key.translateMods(gtk_mods);
+    }
+
+    pub fn supportsQuickTerminal(self: App) bool {
+        return switch (self) {
+            inline else => |v| v.supportsQuickTerminal(),
+        };
+    }
+
+    /// Set up necessary support for the quick terminal that must occur
+    /// *before* the window-level winproto object is created.
+    ///
+    /// Only has an effect on the Wayland backend, where the gtk4-layer-shell
+    /// library is initialized.
+    pub fn initQuickTerminal(self: *App, apprt_window: *ApprtWindow) !void {
+        switch (self.*) {
+            inline else => |*v| try v.initQuickTerminal(apprt_window),
+        }
     }
 };
 
@@ -79,7 +98,7 @@ pub const Window = union(Protocol) {
     ) !Window {
         return switch (app.*) {
             inline else => |*v, tag| {
-                inline for (@typeInfo(Window).Union.fields) |field| {
+                inline for (@typeInfo(Window).@"union".fields) |field| {
                     if (comptime std.mem.eql(
                         u8,
                         field.name,

@@ -40,6 +40,7 @@
                 <outlet property="menuQuit" destination="4sb-4s-VLi" id="qYN-S1-6UW"/>
                 <outlet property="menuReloadConfig" destination="KKH-XX-5py" id="Wvp-7J-wqX"/>
                 <outlet property="menuResetFontSize" destination="Jah-MY-aLX" id="ger-qM-wrm"/>
+                <outlet property="menuReturnToDefaultSize" destination="Gbx-Vi-OGC" id="po9-qC-Iz6"/>
                 <outlet property="menuSecureInput" destination="oC6-w4-qI7" id="PCc-pe-Mda"/>
                 <outlet property="menuSelectAll" destination="q2h-lq-e4r" id="s98-r1-Jcv"/>
                 <outlet property="menuSelectSplitAbove" destination="0yU-hC-8xF" id="aPc-lS-own"/>
@@ -388,6 +389,13 @@
                                 </menu>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="dgt-Tx-d4e"/>
+                            <menuItem title="Return To Default Size" id="Gbx-Vi-OGC" userLabel="Return To Default Size">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="returnToDefaultSize:" target="-1" id="Bpt-GO-UU1"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem isSeparatorItem="YES" id="CpM-rI-Sc1"/>
                             <menuItem title="Bring All to Front" id="LE2-aR-0XJ">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>

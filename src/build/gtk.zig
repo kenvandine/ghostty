@@ -17,8 +17,11 @@ pub fn targets(b: *std.Build) Targets {
         .Ignore,
     ) catch return .{};
 
+    const x11 = std.mem.indexOf(u8, output, "x11") != null;
+    const wayland = std.mem.indexOf(u8, output, "wayland") != null;
+
     return .{
-        .x11 = std.mem.indexOf(u8, output, "x11") != null,
-        .wayland = std.mem.indexOf(u8, output, "wayland") != null,
+        .x11 = x11,
+        .wayland = wayland,
     };
 }

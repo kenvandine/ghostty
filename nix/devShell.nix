@@ -31,14 +31,17 @@
   glib,
   glslang,
   gtk4,
+  gtk4-layer-shell,
   gobject-introspection,
   libadwaita,
   blueprint-compiler,
+  gettext,
   adwaita-icon-theme,
   hicolor-icon-theme,
   harfbuzz,
   libpng,
   libGL,
+  libxkbcommon,
   libX11,
   libXcursor,
   libXext,
@@ -58,7 +61,7 @@
   wayland,
   wayland-scanner,
   wayland-protocols,
-  zig2nix,
+  zon2nix,
   system,
 }: let
   # See package.nix. Keep in sync.
@@ -81,6 +84,7 @@
       glslang
       spirv-cross
 
+      libxkbcommon
       libX11
       libXcursor
       libXi
@@ -88,6 +92,7 @@
 
       libadwaita
       gtk4
+      gtk4-layer-shell
       glib
       gobject-introspection
       wayland
@@ -108,7 +113,7 @@ in
         scdoc
         zig
         zip
-        zig2nix.packages.${system}.zon2nix
+        zon2nix.packages.${system}.zon2nix
 
         # For web and wasm stuff
         nodejs
@@ -127,6 +132,9 @@ in
         # wasm
         wabt
         wasmtime
+
+        # Localization
+        gettext
       ]
       ++ lib.optionals stdenv.hostPlatform.isLinux [
         # My nix shell environment installs the non-interactive version
@@ -156,6 +164,7 @@ in
         glslang
         spirv-cross
 
+        libxkbcommon
         libX11
         libXcursor
         libXext
@@ -167,6 +176,7 @@ in
         blueprint-compiler
         libadwaita
         gtk4
+        gtk4-layer-shell
         glib
         gobject-introspection
         wayland
@@ -193,5 +203,9 @@ in
         # and we need iOS too.
         unset SDKROOT
         unset DEVELOPER_DIR
+
+        # We need to remove "xcrun" from the PATH. It is injected by
+        # some dependency but we need to rely on system Xcode tools
+        export PATH=$(echo "$PATH" | awk -v RS=: -v ORS=: '$0 !~ /xcrun/ || $0 == "/usr/bin" {print}' | sed 's/:$//')
       '');
   }

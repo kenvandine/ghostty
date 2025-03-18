@@ -52,7 +52,7 @@ parts:
       rm -rf $CRAFT_PART_SRC/*
 
       if [[ -n $arch ]]; then
-        curl -LO --retry-connrefused --retry 10 https://ziglang.org/download/0.13.0/zig-linux-$arch-0.13.0.tar.xz
+        curl -LO --retry-connrefused --retry 10 https://ziglang.org/download/0.14.0/zig-linux-$arch-0.14.0.tar.xz
       else
         echo "Unsupported arch"
         exit 1
@@ -73,9 +73,12 @@ parts:
       - blueprint-compiler
       - libgtk-4-dev
       - libadwaita-1-dev
+      # TODO: Add when the Snap is updated to Ubuntu 24.10+
+      # - gtk4-layer-shell
       - libxml2-utils
       - git
       - patchelf
+      - gettext
     override-build: |
       craftctl set version=$(git describe --abbrev=8)
       $CRAFT_PART_SRC/../../zig/src/zig build -Dpatch-rpath=\$ORIGIN/../usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR:/snap/core24/current/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR -Doptimize=ReleaseFast
@@ -99,6 +102,8 @@ parts:
       - libllvm17
       - libunistring5
       - librsvg2-2
+      - librsvg2-common
+      - libgdk-pixbuf-2.0-0
       - on amd64:
           [
             i965-va-driver,
@@ -125,6 +130,7 @@ parts:
       # The libraries in dri need no-patchelf, so they come from the mesa-unpatched part
       - usr/lib/*/*.so*
       - usr/lib/*/dri/libdril_dri.so
+      - -usr/lib/*/libxml2.so.*
       - -usr/lib/*/libgallium*so
       - -usr/lib/*/dri
 

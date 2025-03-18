@@ -132,6 +132,15 @@ extension Ghostty {
             return v
         }
 
+        var title: String? {
+            guard let config = self.config else { return nil }
+            var v: UnsafePointer<Int8>? = nil
+            let key = "title"
+            guard ghostty_config_get(config, &v, key, UInt(key.count)) else { return nil }
+            guard let ptr = v else { return nil }
+            return String(cString: ptr)
+        }
+
         var windowSaveState: String {
             guard let config = self.config else { return "" }
             var v: UnsafePointer<Int8>? = nil
@@ -140,7 +149,7 @@ extension Ghostty {
             guard let ptr = v else { return "" }
             return String(cString: ptr)
         }
-        
+
         var windowPositionX: Int16? {
             guard let config = self.config else { return nil }
             var v: Int16 = 0
@@ -511,6 +520,14 @@ extension Ghostty {
             guard let config = self.config else { return true }
             var v = false;
             let key = "macos-secure-input-indication"
+            _ = ghostty_config_get(config, &v, key, UInt(key.count))
+            return v
+        }
+
+        var maximize: Bool {
+            guard let config = self.config else { return true }
+            var v = false;
+            let key = "maximize"
             _ = ghostty_config_get(config, &v, key, UInt(key.count))
             return v
         }

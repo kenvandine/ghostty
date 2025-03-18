@@ -15,14 +15,10 @@ pub fn main() !void {
 
     const major = try std.fmt.parseUnsigned(u8, it.next() orelse return error.NoMajorVersion, 10);
     const minor = try std.fmt.parseUnsigned(u8, it.next() orelse return error.NoMinorVersion, 10);
-    const micro = try std.fmt.parseUnsigned(u8, it.next() orelse return error.NoMicroVersion, 10);
     const output = it.next() orelse return error.NoOutput;
     const input = it.next() orelse return error.NoInput;
 
-    if (c.ADW_MAJOR_VERSION < major or
-        (c.ADW_MAJOR_VERSION == major and c.ADW_MINOR_VERSION < minor) or
-        (c.ADW_MAJOR_VERSION == major and c.ADW_MINOR_VERSION == minor and c.ADW_MICRO_VERSION < micro))
-    {
+    if (c.ADW_MAJOR_VERSION < major or (c.ADW_MAJOR_VERSION == major and c.ADW_MINOR_VERSION < minor)) {
         // If the Adwaita version is too old, generate an "empty" file.
         const file = try std.fs.createFileAbsolute(output, .{
             .truncate = true,

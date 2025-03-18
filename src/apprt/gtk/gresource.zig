@@ -53,19 +53,33 @@ const icons = [_]struct {
     },
 };
 
-pub const ui_files = [_][]const u8{};
+pub const VersionedBuilderXML = struct {
+    major: u16,
+    minor: u16,
+    name: []const u8,
+};
+
+pub const ui_files = [_]VersionedBuilderXML{
+    .{ .major = 1, .minor = 2, .name = "config-errors-dialog" },
+    .{ .major = 1, .minor = 2, .name = "ccw-osc-52-read" },
+    .{ .major = 1, .minor = 2, .name = "ccw-osc-52-write" },
+    .{ .major = 1, .minor = 2, .name = "ccw-paste" },
+};
 
 pub const VersionedBlueprint = struct {
     major: u16,
     minor: u16,
-    micro: u16,
     name: []const u8,
 };
 
 pub const blueprint_files = [_]VersionedBlueprint{
-    .{ .major = 1, .minor = 5, .micro = 0, .name = "prompt-title-dialog" },
-    .{ .major = 1, .minor = 0, .micro = 0, .name = "menu-surface-context_menu" },
-    .{ .major = 1, .minor = 0, .micro = 0, .name = "menu-window-titlebar_menu" },
+    .{ .major = 1, .minor = 5, .name = "prompt-title-dialog" },
+    .{ .major = 1, .minor = 5, .name = "config-errors-dialog" },
+    .{ .major = 1, .minor = 0, .name = "menu-surface-context_menu" },
+    .{ .major = 1, .minor = 0, .name = "menu-window-titlebar_menu" },
+    .{ .major = 1, .minor = 5, .name = "ccw-osc-52-read" },
+    .{ .major = 1, .minor = 5, .name = "ccw-osc-52-write" },
+    .{ .major = 1, .minor = 5, .name = "ccw-paste" },
 };
 
 pub fn main() !void {
@@ -119,15 +133,20 @@ pub fn main() !void {
     );
     for (ui_files) |ui_file| {
         try writer.print(
-            "    <file compressed=\"true\" preprocess=\"xml-stripblanks\" alias=\"{0s}.ui\">src/apprt/gtk/ui/{0s}.ui</file>\n",
-            .{ui_file},
+            "    <file compressed=\"true\" preprocess=\"xml-stripblanks\" alias=\"{0d}.{1d}/{2s}.ui\">src/apprt/gtk/ui/{0d}.{1d}/{2s}.ui</file>\n",
+            .{ ui_file.major, ui_file.minor, ui_file.name },
         );
     }
     for (extra_ui_files.items) |ui_file| {
-        try writer.print(
-            "    <file compressed=\"true\" preprocess=\"xml-stripblanks\" alias=\"{s}\">{s}</file>\n",
-            .{ std.fs.path.basename(ui_file), ui_file },
-        );
+        const stem = std.fs.path.stem(ui_file);
+        for (blueprint_files) |file| {
+            if (!std.mem.eql(u8, file.name, stem)) continue;
+            try writer.print(
+                "    <file compressed=\"true\" preprocess=\"xml-stripblanks\" alias=\"{d}.{d}/{s}.ui\">{s}</file>\n",
+                .{ file.major, file.minor, file.name, ui_file },
+            );
+            break;
+        } else return error.BlueprintNotFound;
     }
     try writer.writeAll(
         \\  </gresource>
@@ -149,11 +168,19 @@ pub const dependencies = deps: {
         index += 1;
     }
     for (ui_files) |ui_file| {
-        deps[index] = std.fmt.comptimePrint("src/apprt/gtk/ui/{s}.ui", .{ui_file});
+        deps[index] = std.fmt.comptimePrint("src/apprt/gtk/ui/{d}.{d}/{s}.ui", .{
+            ui_file.major,
+            ui_file.minor,
+            ui_file.name,
+        });
         index += 1;
     }
     for (blueprint_files) |blueprint_file| {
-        deps[index] = std.fmt.comptimePrint("src/apprt/gtk/ui/{s}.blp", .{blueprint_file.name});
+        deps[index] = std.fmt.comptimePrint("src/apprt/gtk/ui/{d}.{d}/{s}.blp", .{
+            blueprint_file.major,
+            blueprint_file.minor,
+            blueprint_file.name,
+        });
         index += 1;
     }
     break :deps deps;

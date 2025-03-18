@@ -1,5 +1,10 @@
 [files]
 extend-exclude = [
+  # Build
+  "build.zig.zon",
+  "build.zig.zon.nix",
+  "build.zig.zon.txt",
+  "build.zig.zon.json",
   # vendored code
   "vendor/*",
   "pkg/*",
@@ -19,14 +24,14 @@ extend-exclude = [
   "*.pdf",
   "*.data",
   "*.xib",
-  "src/cli/lorem_ipsum.txt"
+  "src/cli/lorem_ipsum.txt",
 ]
 
 [default]
 extend-ignore-re = [
   # Ignore typos in test expectations
   "testing\\.expect[^;]*;",
-  "kHOM\\d*"
+  "kHOM\\d*",
 ]
 
 [default.extend-words]
@@ -44,6 +49,10 @@ grey = "gray"
 greyscale = "grayscale"
 DECID = "DECID"
 flate = "flate"
+
+[type.po]
+extend-glob = ["*.po"]
+check-file = false
 
 [type.swift.extend-words]
 inout = "inout"

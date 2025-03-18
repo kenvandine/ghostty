@@ -468,6 +468,11 @@ class QuickTerminalController: BaseTerminalController {
         ghostty.toggleFullscreen(surface: surface)
     }
 
+    @IBAction func toggleTerminalInspector(_ sender: Any?) {
+        guard let surface = focusedSurface?.surface else { return }
+        ghostty.toggleTerminalInspector(surface: surface)
+    }
+
     // MARK: Notifications
 
     @objc private func applicationWillTerminate(_ notification: Notification) {

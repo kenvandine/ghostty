@@ -27,6 +27,9 @@ class TerminalController: BaseTerminalController {
     /// The notification cancellable for focused surface property changes.
     private var surfaceAppearanceCancellables: Set<AnyCancellable> = []
 
+    /// This will be set to the initial frame of the window from the xib on load.
+    private var initialFrame: NSRect? = nil
+
     init(_ ghostty: Ghostty.App,
          withBaseConfig base: Ghostty.SurfaceConfiguration? = nil,
          withSurfaceTree tree: Ghostty.SplitNode? = nil
@@ -67,6 +70,12 @@ class TerminalController: BaseTerminalController {
             object: nil)
         center.addObserver(
             self,
+            selector: #selector(onResetWindowSize),
+            name: .ghosttyResetWindowSize,
+            object: nil
+        )
+        center.addObserver(
+            self,
             selector: #selector(ghosttyConfigDidChange(_:)),
             name: .ghosttyConfigDidChange,
             object: nil
@@ -76,6 +85,12 @@ class TerminalController: BaseTerminalController {
             selector: #selector(onFrameDidChange),
             name: NSView.frameDidChangeNotification,
             object: nil)
+        center.addObserver(
+            self,
+            selector: #selector(onEqualizeSplits),
+            name: Ghostty.Notification.didEqualizeSplits,
+            object: nil
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -308,6 +323,55 @@ class TerminalController: BaseTerminalController {
             y: frame.maxY - (CGFloat(y) + window.frame.height)))
     }
 
+    /// Returns the default size of the window. This is contextual based on the focused surface because
+    /// the focused surface may specify a different default size than others.
+    private var defaultSize: NSRect? {
+        guard let screen = window?.screen ?? NSScreen.main else { return nil }
+
+        if derivedConfig.maximize {
+            return screen.visibleFrame
+        } else if let focusedSurface,
+                  let initialSize = focusedSurface.initialSize {
+            // Get the current frame of the window
+            guard var frame = window?.frame else { return nil }
+
+            // Calculate the chrome size (window size minus view size)
+            let chromeWidth = frame.size.width - focusedSurface.frame.size.width
+            let chromeHeight = frame.size.height - focusedSurface.frame.size.height
+
+            // Calculate the new width and height, clamping to the screen's size
+            let newWidth = min(initialSize.width + chromeWidth, screen.visibleFrame.width)
+            let newHeight = min(initialSize.height + chromeHeight, screen.visibleFrame.height)
+
+            // Update the frame size while keeping the window's position intact
+            frame.size.width = newWidth
+            frame.size.height = newHeight
+
+            // Ensure the window doesn't go outside the screen boundaries
+            frame.origin.x = max(screen.frame.origin.x, min(frame.origin.x, screen.frame.maxX - newWidth))
+            frame.origin.y = max(screen.frame.origin.y, min(frame.origin.y, screen.frame.maxY - newHeight))
+
+            return frame
+        }
+
+        guard let initialFrame else { return nil }
+        guard var frame = window?.frame else { return nil }
+
+        // Calculate the new width and height, clamping to the screen's size
+        let newWidth = min(initialFrame.size.width, screen.visibleFrame.width)
+        let newHeight = min(initialFrame.size.height, screen.visibleFrame.height)
+
+        // Update the frame size while keeping the window's position intact
+        frame.size.width = newWidth
+        frame.size.height = newHeight
+
+        // Ensure the window doesn't go outside the screen boundaries
+        frame.origin.x = max(screen.frame.origin.x, min(frame.origin.x, screen.frame.maxX - newWidth))
+        frame.origin.y = max(screen.frame.origin.y, min(frame.origin.y, screen.frame.maxY - newHeight))
+
+        return frame
+    }
+
     //MARK: - NSWindowController
 
     override func windowWillLoad() {
@@ -356,6 +420,9 @@ class TerminalController: BaseTerminalController {
         super.windowDidLoad()
         guard let window = window as? TerminalWindow else { return }
 
+        // Store our initial frame so we can know our default later.
+        initialFrame = window.frame
+
         // I copy this because we may change the source in the future but also because
         // I regularly audit our codebase for "ghostty.config" access because generally
         // you shouldn't use it. Its safe in this case because for a new window we should
@@ -372,32 +439,15 @@ class TerminalController: BaseTerminalController {
         // If window decorations are disabled, remove our title
         if (!config.windowDecorations) { window.styleMask.remove(.titled) }
 
-        // If we have only a single surface (no splits) and that surface requested
-        // an initial size then we set it here now.
+        // If we have only a single surface (no splits) and there is a default size then
+        // we should resize to that default size.
         if case let .leaf(leaf) = surfaceTree {
-            if let initialSize = leaf.surface.initialSize,
-               let screen = window.screen ?? NSScreen.main {
-                // Get the current frame of the window
-                var frame = window.frame
+            // If this is our first surface then our focused surface will be nil
+            // so we force the focused surface to the leaf.
+            focusedSurface = leaf.surface
 
-                // Calculate the chrome size (window size minus view size)
-                let chromeWidth = frame.size.width - leaf.surface.frame.size.width
-                let chromeHeight = frame.size.height - leaf.surface.frame.size.height
-
-                // Calculate the new width and height, clamping to the screen's size
-                let newWidth = min(initialSize.width + chromeWidth, screen.visibleFrame.width)
-                let newHeight = min(initialSize.height + chromeHeight, screen.visibleFrame.height)
-
-                // Update the frame size while keeping the window's position intact
-                frame.size.width = newWidth
-                frame.size.height = newHeight
-
-                // Ensure the window doesn't go outside the screen boundaries
-                frame.origin.x = max(screen.frame.origin.x, min(frame.origin.x, screen.frame.maxX - newWidth))
-                frame.origin.y = max(screen.frame.origin.y, min(frame.origin.y, screen.frame.maxY - newHeight))
-
-                // Set the updated frame to the window
-                window.setFrame(frame, display: true)
+            if let defaultSize {
+                window.setFrame(defaultSize, display: true)
             }
         }
 
@@ -572,6 +622,11 @@ class TerminalController: BaseTerminalController {
         }
 
         window.close()
+    }
+
+    @IBAction func returnToDefaultSize(_ sender: Any?) {
+        guard let defaultSize else { return }
+        window?.setFrame(defaultSize, display: true)
     }
 
     @IBAction override func closeWindow(_ sender: Any?) {
@@ -787,6 +842,12 @@ class TerminalController: BaseTerminalController {
         closeTab(self)
     }
 
+    @objc private func onResetWindowSize(notification: SwiftUI.Notification) {
+        guard let target = notification.object as? Ghostty.SurfaceView else { return }
+        guard surfaceTree?.contains(view: target) ?? false else { return }
+        returnToDefaultSize(nil)
+    }
+
     @objc private func onToggleFullscreen(notification: SwiftUI.Notification) {
         guard let target = notification.object as? Ghostty.SurfaceView else { return }
         guard target == self.focusedSurface else { return }
@@ -804,18 +865,69 @@ class TerminalController: BaseTerminalController {
         toggleFullscreen(mode: fullscreenMode)
     }
 
+    @objc private func onEqualizeSplits(_ notification: Notification) {
+        guard let target = notification.object as? Ghostty.SurfaceView else { return }
+
+        // Check if target surface is in current controller's tree
+        guard surfaceTree?.contains(view: target) ?? false else { return }
+
+        if case .split(let container) = surfaceTree {
+            _ = container.equalize()
+        }
+    }
+
     struct DerivedConfig {
         let backgroundColor: Color
         let macosTitlebarStyle: String
+        let maximize: Bool
 
         init() {
             self.backgroundColor = Color(NSColor.windowBackgroundColor)
             self.macosTitlebarStyle = "system"
+            self.maximize = false
         }
 
         init(_ config: Ghostty.Config) {
             self.backgroundColor = config.backgroundColor
             self.macosTitlebarStyle = config.macosTitlebarStyle
+            self.maximize = config.maximize
         }
     }
 }
+
+
+extension TerminalController: NSMenuItemValidation {
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(returnToDefaultSize):
+            guard let window else { return false }
+
+            // Native fullscreen windows can't revert to default size.
+            if window.styleMask.contains(.fullScreen) {
+                return false
+            }
+
+            // If we're fullscreen at all then we can't change size
+            if fullscreenStyle?.isFullscreen ?? false {
+                return false
+            }
+
+            // If our window is already the default size or we don't have a
+            // default size, then disable.
+            guard let defaultSize,
+                  window.frame.size != .init(
+                    width: defaultSize.size.width,
+                    height: defaultSize.size.height
+                  )
+            else {
+                return false
+            }
+
+            return true
+
+        default:
+            return true
+        }
+    }
+}
+

@@ -51,6 +51,7 @@ class AppDelegate: NSObject,
     @IBOutlet private var menuSelectSplitBelow: NSMenuItem?
     @IBOutlet private var menuSelectSplitLeft: NSMenuItem?
     @IBOutlet private var menuSelectSplitRight: NSMenuItem?
+    @IBOutlet private var menuReturnToDefaultSize: NSMenuItem?
 
     @IBOutlet private var menuIncreaseFontSize: NSMenuItem?
     @IBOutlet private var menuDecreaseFontSize: NSMenuItem?
@@ -386,6 +387,7 @@ class AppDelegate: NSObject,
         syncMenuShortcut(config, action: "resize_split:right,10", menuItem: self.menuMoveSplitDividerRight)
         syncMenuShortcut(config, action: "resize_split:left,10", menuItem: self.menuMoveSplitDividerLeft)
         syncMenuShortcut(config, action: "equalize_splits", menuItem: self.menuEqualizeSplits)
+        syncMenuShortcut(config, action: "reset_window_size", menuItem: self.menuReturnToDefaultSize)
 
         syncMenuShortcut(config, action: "increase_font_size:1", menuItem: self.menuIncreaseFontSize)
         syncMenuShortcut(config, action: "decrease_font_size:1", menuItem: self.menuDecreaseFontSize)

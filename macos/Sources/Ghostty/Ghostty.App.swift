@@ -508,6 +508,9 @@ extension Ghostty {
             case GHOSTTY_ACTION_INITIAL_SIZE:
                 setInitialSize(app, target: target, v: action.action.initial_size)
 
+            case GHOSTTY_ACTION_RESET_WINDOW_SIZE:
+                resetWindowSize(app, target: target)
+
             case GHOSTTY_ACTION_CELL_SIZE:
                 setCellSize(app, target: target, v: action.action.cell_size)
 
@@ -1131,13 +1134,35 @@ extension Ghostty {
             v: ghostty_action_initial_size_s) {
             switch (target.tag) {
             case GHOSTTY_TARGET_APP:
-                Ghostty.logger.warning("mouse over link does nothing with an app target")
+                Ghostty.logger.warning("initial size does nothing with an app target")
                 return
 
             case GHOSTTY_TARGET_SURFACE:
                 guard let surface = target.target.surface else { return }
                 guard let surfaceView = self.surfaceView(from: surface) else { return }
                 surfaceView.initialSize = NSMakeSize(Double(v.width), Double(v.height))
+
+
+            default:
+                assertionFailure()
+            }
+        }
+
+        private static func resetWindowSize(
+            _ app: ghostty_app_t,
+            target: ghostty_target_s) {
+            switch (target.tag) {
+            case GHOSTTY_TARGET_APP:
+                Ghostty.logger.warning("reset window size does nothing with an app target")
+                return
+
+            case GHOSTTY_TARGET_SURFACE:
+                guard let surface = target.target.surface else { return }
+                guard let surfaceView = self.surfaceView(from: surface) else { return }
+                NotificationCenter.default.post(
+                    name: .ghosttyResetWindowSize,
+                    object: surfaceView
+                )
 
 
             default:

@@ -40,6 +40,7 @@
 		A53D0C952B53B4D800305CE6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A5B30538299BEAAB0047F10C /* Assets.xcassets */; };
 		A53D0C9B2B543F3B00305CE6 /* Ghostty.App.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53D0C992B543F3B00305CE6 /* Ghostty.App.swift */; };
 		A53D0C9C2B543F7B00305CE6 /* Package.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55B7BB729B6F53A0055DE60 /* Package.swift */; };
+		A546F1142D7B68D7003B11A0 /* locale in Resources */ = {isa = PBXBuildFile; fileRef = A546F1132D7B68D7003B11A0 /* locale */; };
 		A54B0CE92D0CECD100CBEFF8 /* ColorizedGhosttyIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54B0CE82D0CECD100CBEFF8 /* ColorizedGhosttyIconView.swift */; };
 		A54B0CEB2D0CFB4C00CBEFF8 /* NSImage+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54B0CEA2D0CFB4A00CBEFF8 /* NSImage+Extension.swift */; };
 		A54B0CED2D0CFB7700CBEFF8 /* ColorizedGhosttyIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54B0CEC2D0CFB7300CBEFF8 /* ColorizedGhosttyIcon.swift */; };
@@ -138,6 +139,7 @@
 		A53A6C022CCC1B7D00943E98 /* Ghostty.Action.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Action.swift; sourceTree = "<group>"; };
 		A53D0C932B53B43700305CE6 /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
 		A53D0C992B543F3B00305CE6 /* Ghostty.App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.App.swift; sourceTree = "<group>"; };
+		A546F1132D7B68D7003B11A0 /* locale */ = {isa = PBXFileReference; lastKnownFileType = folder; name = locale; path = "../zig-out/share/locale"; sourceTree = "<group>"; };
 		A54B0CE82D0CECD100CBEFF8 /* ColorizedGhosttyIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorizedGhosttyIconView.swift; sourceTree = "<group>"; };
 		A54B0CEA2D0CFB4A00CBEFF8 /* NSImage+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSImage+Extension.swift"; sourceTree = "<group>"; };
 		A54B0CEC2D0CFB7300CBEFF8 /* ColorizedGhosttyIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorizedGhosttyIcon.swift; sourceTree = "<group>"; };
@@ -424,6 +426,7 @@
 				29C15B1C2CDC3B2000520DD4 /* bat */,
 				A586167B2B7703CC009BDB1D /* fish */,
 				55154BDF2B33911F001622DC /* ghostty */,
+				A546F1132D7B68D7003B11A0 /* locale */,
 				A5985CE52C33060F00C57AD3 /* man */,
 				9351BE8E2D22937F003B3499 /* nvim */,
 				A5A1F8842A489D6800D1E8BC /* terminfo */,
@@ -593,20 +596,21 @@
 			buildActionMask = 2147483647;
 			files = (
 				FC9ABA9C2D0F53F80020D4C8 /* bash-completion in Resources */,
+				29C15B1D2CDC3B2900520DD4 /* bat in Resources */,
+				A586167C2B7703CC009BDB1D /* fish in Resources */,
+				55154BE02B33911F001622DC /* ghostty in Resources */,
+				A546F1142D7B68D7003B11A0 /* locale in Resources */,
+				A5985CE62C33060F00C57AD3 /* man in Resources */,
+				9351BE8E3D22937F003B3499 /* nvim in Resources */,
+				A5A1F8852A489D6800D1E8BC /* terminfo in Resources */,
+				552964E62B34A9B400030505 /* vim in Resources */,
+				FC5218FA2D10FFCE004C93E0 /* zsh in Resources */,
 				A5B30539299BEAAB0047F10C /* Assets.xcassets in Resources */,
 				A51BFC1E2B2FB5CE00E92F16 /* About.xib in Resources */,
 				A5E112932AF73E6E00C6E0C2 /* ClipboardConfirmation.xib in Resources */,
 				A5CDF1912AAF9A5800513312 /* ConfigurationErrors.xib in Resources */,
 				857F63812A5E64F200CA4815 /* MainMenu.xib in Resources */,
-				29C15B1D2CDC3B2900520DD4 /* bat in Resources */,
 				A596309A2AEE1C6400D64628 /* Terminal.xib in Resources */,
-				A586167C2B7703CC009BDB1D /* fish in Resources */,
-				FC5218FA2D10FFCE004C93E0 /* zsh in Resources */,
-				55154BE02B33911F001622DC /* ghostty in Resources */,
-				A5985CE62C33060F00C57AD3 /* man in Resources */,
-				A5A1F8852A489D6800D1E8BC /* terminfo in Resources */,
-				552964E62B34A9B400030505 /* vim in Resources */,
-				9351BE8E3D22937F003B3499 /* nvim in Resources */,
 				A5CBD05C2CA0C5C70017A1AE /* QuickTerminal.xib in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -17,6 +17,7 @@ const resourcesdir = @import("resourcesdir.zig");
 pub const args = @import("args.zig");
 pub const cgroup = @import("cgroup.zig");
 pub const hostname = @import("hostname.zig");
+pub const i18n = @import("i18n.zig");
 pub const passwd = @import("passwd.zig");
 pub const xdg = @import("xdg.zig");
 pub const windows = @import("windows.zig");
@@ -51,3 +52,7 @@ pub const OpenType = openpkg.Type;
 pub const pipe = pipepkg.pipe;
 pub const resourcesDir = resourcesdir.resourcesDir;
 pub const ShellEscapeWriter = shell.ShellEscapeWriter;
+
+test {
+    _ = i18n;
+}

@@ -1,6 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const c = @import("../c.zig").c;
+
+const gdk = @import("gdk");
+
 const Config = @import("../../../config.zig").Config;
 const input = @import("../../../input.zig");
 const ApprtWindow = @import("../Window.zig");
@@ -10,7 +12,7 @@ const log = std.log.scoped(.winproto_noop);
 pub const App = struct {
     pub fn init(
         _: Allocator,
-        _: *c.GdkDisplay,
+        _: *gdk.Display,
         _: [:0]const u8,
         _: *const Config,
     ) !?App {
@@ -24,11 +26,16 @@ pub const App = struct {
 
     pub fn eventMods(
         _: *App,
-        _: ?*c.GdkDevice,
-        _: c.GdkModifierType,
+        _: ?*gdk.Device,
+        _: gdk.ModifierType,
     ) ?input.Mods {
         return null;
     }
+
+    pub fn supportsQuickTerminal(_: App) bool {
+        return false;
+    }
+    pub fn initQuickTerminal(_: *App, _: *ApprtWindow) !void {}
 };
 
 pub const Window = struct {
