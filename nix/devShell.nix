@@ -3,6 +3,8 @@
   lib,
   stdenv,
   bashInteractive,
+  appstream,
+  flatpak-builder,
   gdb,
   #, glxinfo # unused
   ncurses,
@@ -57,6 +59,7 @@
   pandoc,
   hyperfine,
   typos,
+  uv,
   wayland,
   wayland-scanner,
   wayland-protocols,
@@ -109,6 +112,9 @@ in
         # Localization
         gettext
 
+        # CI
+        uv
+
         # We need these GTK-related deps on all platform so we can build
         # dist tarballs.
         blueprint-compiler
@@ -124,6 +130,8 @@ in
         # build only has the qemu-system files.
         qemu
 
+        appstream
+        flatpak-builder
         gdb
         snapcraft
         valgrind

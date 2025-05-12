@@ -25,9 +25,9 @@ const c = if (builtin.os.tag != .windows) @cImport({
 // Entry that is retrieved from the passwd API. This only contains the fields
 // we care about.
 pub const Entry = struct {
-    shell: ?[]const u8 = null,
-    home: ?[]const u8 = null,
-    name: ?[]const u8 = null,
+    shell: ?[:0]const u8 = null,
+    home: ?[:0]const u8 = null,
+    name: ?[:0]const u8 = null,
 };
 
 /// Get the passwd entry for the currently executing user.
@@ -117,30 +117,27 @@ pub fn get(alloc: Allocator) !Entry {
 
         // Shell and home are the last two entries
         var it = std.mem.splitBackwardsScalar(u8, std.mem.trimRight(u8, output, " \r\n"), ':');
-        result.shell = it.next() orelse null;
-        result.home = it.next() orelse null;
+        result.shell = if (it.next()) |v| try alloc.dupeZ(u8, v) else null;
+        result.home = if (it.next()) |v| try alloc.dupeZ(u8, v) else null;
         return result;
     }
 
     if (pw.pw_shell) |ptr| {
         const source = std.mem.sliceTo(ptr, 0);
-        const sh = try alloc.alloc(u8, source.len);
-        @memcpy(sh, source);
-        result.shell = sh;
+        const value = try alloc.dupeZ(u8, source);
+        result.shell = value;
     }
 
     if (pw.pw_dir) |ptr| {
         const source = std.mem.sliceTo(ptr, 0);
-        const dir = try alloc.alloc(u8, source.len);
-        @memcpy(dir, source);
-        result.home = dir;
+        const value = try alloc.dupeZ(u8, source);
+        result.home = value;
     }
 
     if (pw.pw_name) |ptr| {
         const source = std.mem.sliceTo(ptr, 0);
-        const name = try alloc.alloc(u8, source.len);
-        @memcpy(name, source);
-        result.name = name;
+        const value = try alloc.dupeZ(u8, source);
+        result.name = value;
     }
 
     return result;

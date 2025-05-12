@@ -27,10 +27,10 @@ pub const ShellIntegration = struct {
     /// bash in particular it may be different.
     ///
     /// The memory is allocated in the arena given to setup.
-    command: []const u8,
+    command: config.Command,
 };
 
-/// Setup the command execution environment for automatic
+/// Set up the command execution environment for automatic
 /// integrated shell integration and return a ShellIntegration
 /// struct describing the integration.  If integration fails
 /// (shell type couldn't be detected, etc.), this will return null.
@@ -41,7 +41,7 @@ pub const ShellIntegration = struct {
 pub fn setup(
     alloc_arena: Allocator,
     resource_dir: []const u8,
-    command: []const u8,
+    command: config.Command,
     env: *EnvMap,
     force_shell: ?Shell,
     features: config.ShellIntegrationFeatures,
@@ -51,14 +51,24 @@ pub fn setup(
         .elvish => "elvish",
         .fish => "fish",
         .zsh => "zsh",
-    } else exe: {
-        // The command can include arguments. Look for the first space
-        // and use the basename of the first part as the command's exe.
-        const idx = std.mem.indexOfScalar(u8, command, ' ') orelse command.len;
-        break :exe std.fs.path.basename(command[0..idx]);
+    } else switch (command) {
+        .direct => |v| std.fs.path.basename(v[0]),
+        .shell => |v| exe: {
+            // Shell strings can include spaces so we want to only
+            // look up to the space if it exists. No shell that we integrate
+            // has spaces.
+            const idx = std.mem.indexOfScalar(u8, v, ' ') orelse v.len;
+            break :exe std.fs.path.basename(v[0..idx]);
+        },
     };
 
-    const result = try setupShell(alloc_arena, resource_dir, command, env, exe);
+    const result = try setupShell(
+        alloc_arena,
+        resource_dir,
+        command,
+        env,
+        exe,
+    );
 
     // Setup our feature env vars
     try setupFeatures(env, features);
@@ -69,7 +79,7 @@ pub fn setup(
 fn setupShell(
     alloc_arena: Allocator,
     resource_dir: []const u8,
-    command: []const u8,
+    command: config.Command,
     env: *EnvMap,
     exe: []const u8,
 ) !?ShellIntegration {
@@ -83,7 +93,10 @@ fn setupShell(
         // we're using Apple's Bash because /bin is non-writable
         // on modern macOS due to System Integrity Protection.
         if (comptime builtin.target.os.tag.isDarwin()) {
-            if (std.mem.eql(u8, "/bin/bash", command)) {
+            if (std.mem.eql(u8, "/bin/bash", switch (command) {
+                .direct => |v| v[0],
+                .shell => |v| v,
+            })) {
                 return null;
             }
         }
@@ -104,7 +117,7 @@ fn setupShell(
         try setupXdgDataDirs(alloc_arena, resource_dir, env);
         return .{
             .shell = .elvish,
-            .command = try alloc_arena.dupe(u8, command),
+            .command = try command.clone(alloc_arena),
         };
     }
 
@@ -112,7 +125,7 @@ fn setupShell(
         try setupXdgDataDirs(alloc_arena, resource_dir, env);
         return .{
             .shell = .fish,
-            .command = try alloc_arena.dupe(u8, command),
+            .command = try command.clone(alloc_arena),
         };
     }
 
@@ -120,7 +133,7 @@ fn setupShell(
         try setupZsh(resource_dir, env);
         return .{
             .shell = .zsh,
-            .command = try alloc_arena.dupe(u8, command),
+            .command = try command.clone(alloc_arena),
         };
     }
 
@@ -139,20 +152,41 @@ test "force shell" {
 
     inline for (@typeInfo(Shell).@"enum".fields) |field| {
         const shell = @field(Shell, field.name);
-        const result = try setup(alloc, ".", "sh", &env, shell, .{});
+        const result = try setup(
+            alloc,
+            ".",
+            .{ .shell = "sh" },
+            &env,
+            shell,
+            .{},
+        );
         try testing.expectEqual(shell, result.?.shell);
     }
 }
 
-/// Setup shell integration feature environment variables without
-/// performing full shell integration setup.
+/// Set up the shell integration features environment variable.
 pub fn setupFeatures(
     env: *EnvMap,
     features: config.ShellIntegrationFeatures,
 ) !void {
-    if (!features.cursor) try env.put("GHOSTTY_SHELL_INTEGRATION_NO_CURSOR", "1");
-    if (!features.sudo) try env.put("GHOSTTY_SHELL_INTEGRATION_NO_SUDO", "1");
-    if (!features.title) try env.put("GHOSTTY_SHELL_INTEGRATION_NO_TITLE", "1");
+    const fields = @typeInfo(@TypeOf(features)).@"struct".fields;
+    const capacity: usize = capacity: {
+        comptime var n: usize = fields.len - 1; // commas
+        inline for (fields) |field| n += field.name.len;
+        break :capacity n;
+    };
+    var buffer = try std.BoundedArray(u8, capacity).init(0);
+
+    inline for (fields) |field| {
+        if (@field(features, field.name)) {
+            if (buffer.len > 0) try buffer.append(',');
+            try buffer.appendSlice(field.name);
+        }
+    }
+
+    if (buffer.len > 0) {
+        try env.put("GHOSTTY_SHELL_FEATURES", buffer.slice());
+    }
 }
 
 test "setup features" {
@@ -162,15 +196,13 @@ test "setup features" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    // Test: all features enabled (no environment variables should be set)
+    // Test: all features enabled
     {
         var env = EnvMap.init(alloc);
         defer env.deinit();
 
         try setupFeatures(&env, .{ .cursor = true, .sudo = true, .title = true });
-        try testing.expect(env.get("GHOSTTY_SHELL_INTEGRATION_NO_CURSOR") == null);
-        try testing.expect(env.get("GHOSTTY_SHELL_INTEGRATION_NO_SUDO") == null);
-        try testing.expect(env.get("GHOSTTY_SHELL_INTEGRATION_NO_TITLE") == null);
+        try testing.expectEqualStrings("cursor,sudo,title", env.get("GHOSTTY_SHELL_FEATURES").?);
     }
 
     // Test: all features disabled
@@ -179,9 +211,7 @@ test "setup features" {
         defer env.deinit();
 
         try setupFeatures(&env, .{ .cursor = false, .sudo = false, .title = false });
-        try testing.expectEqualStrings("1", env.get("GHOSTTY_SHELL_INTEGRATION_NO_CURSOR").?);
-        try testing.expectEqualStrings("1", env.get("GHOSTTY_SHELL_INTEGRATION_NO_SUDO").?);
-        try testing.expectEqualStrings("1", env.get("GHOSTTY_SHELL_INTEGRATION_NO_TITLE").?);
+        try testing.expect(env.get("GHOSTTY_SHELL_FEATURES") == null);
     }
 
     // Test: mixed features
@@ -190,9 +220,7 @@ test "setup features" {
         defer env.deinit();
 
         try setupFeatures(&env, .{ .cursor = false, .sudo = true, .title = false });
-        try testing.expectEqualStrings("1", env.get("GHOSTTY_SHELL_INTEGRATION_NO_CURSOR").?);
-        try testing.expect(env.get("GHOSTTY_SHELL_INTEGRATION_NO_SUDO") == null);
-        try testing.expectEqualStrings("1", env.get("GHOSTTY_SHELL_INTEGRATION_NO_TITLE").?);
+        try testing.expectEqualStrings("sudo", env.get("GHOSTTY_SHELL_FEATURES").?);
     }
 }
 
@@ -207,27 +235,28 @@ test "setup features" {
 /// enables the integration or null if integration failed.
 fn setupBash(
     alloc: Allocator,
-    command: []const u8,
+    command: config.Command,
     resource_dir: []const u8,
     env: *EnvMap,
-) !?[]const u8 {
-    // Accumulates the arguments that will form the final shell command line.
-    // We can build this list on the stack because we're just temporarily
-    // referencing other slices, but we can fall back to heap in extreme cases.
-    var args_alloc = std.heap.stackFallback(1024, alloc);
-    var args = try std.ArrayList([]const u8).initCapacity(args_alloc.get(), 2);
+) !?config.Command {
+    var args = try std.ArrayList([:0]const u8).initCapacity(alloc, 3);
     defer args.deinit();
 
     // Iterator that yields each argument in the original command line.
     // This will allocate once proportionate to the command line length.
-    var iter = try std.process.ArgIteratorGeneral(.{}).init(alloc, command);
+    var iter = try command.argIterator(alloc);
     defer iter.deinit();
 
-    // Start accumulating arguments with the executable and `--posix` mode flag.
+    // Start accumulating arguments with the executable and initial flags.
     if (iter.next()) |exe| {
-        try args.append(exe);
+        try args.append(try alloc.dupeZ(u8, exe));
     } else return null;
     try args.append("--posix");
+
+    // On macOS, we request a login shell to match that platform's norms.
+    if (comptime builtin.target.os.tag.isDarwin()) {
+        try args.append("--login");
+    }
 
     // Stores the list of intercepted command line flags that will be passed
     // to our shell integration script: --norc --noprofile
@@ -259,17 +288,17 @@ fn setupBash(
             if (std.mem.indexOfScalar(u8, arg, 'c') != null) {
                 return null;
             }
-            try args.append(arg);
+            try args.append(try alloc.dupeZ(u8, arg));
         } else if (std.mem.eql(u8, arg, "-") or std.mem.eql(u8, arg, "--")) {
             // All remaining arguments should be passed directly to the shell
             // command. We shouldn't perform any further option processing.
-            try args.append(arg);
+            try args.append(try alloc.dupeZ(u8, arg));
             while (iter.next()) |remaining_arg| {
-                try args.append(remaining_arg);
+                try args.append(try alloc.dupeZ(u8, remaining_arg));
             }
             break;
         } else {
-            try args.append(arg);
+            try args.append(try alloc.dupeZ(u8, arg));
         }
     }
     try env.put("GHOSTTY_BASH_INJECT", inject.slice());
@@ -302,30 +331,39 @@ fn setupBash(
     );
     try env.put("ENV", integ_dir);
 
-    // Join the accumulated arguments to form the final command string.
-    return try std.mem.join(alloc, " ", args.items);
+    // Since we built up a command line, we don't need to wrap it in
+    // ANOTHER shell anymore and can do a direct command.
+    return .{ .direct = try args.toOwnedSlice() };
 }
 
 test "bash" {
     const testing = std.testing;
-    const alloc = testing.allocator;
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
 
     var env = EnvMap.init(alloc);
     defer env.deinit();
 
-    const command = try setupBash(alloc, "bash", ".", &env);
-    defer if (command) |c| alloc.free(c);
+    const command = try setupBash(alloc, .{ .shell = "bash" }, ".", &env);
 
-    try testing.expectEqualStrings("bash --posix", command.?);
+    try testing.expect(command.?.direct.len >= 2);
+    try testing.expectEqualStrings("bash", command.?.direct[0]);
+    try testing.expectEqualStrings("--posix", command.?.direct[1]);
+    if (comptime builtin.target.os.tag.isDarwin()) {
+        try testing.expectEqualStrings("--login", command.?.direct[2]);
+    }
     try testing.expectEqualStrings("./shell-integration/bash/ghostty.bash", env.get("ENV").?);
     try testing.expectEqualStrings("1", env.get("GHOSTTY_BASH_INJECT").?);
 }
 
 test "bash: unsupported options" {
     const testing = std.testing;
-    const alloc = testing.allocator;
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
 
-    const cmdlines = [_][]const u8{
+    const cmdlines = [_][:0]const u8{
         "bash --posix",
         "bash --rcfile script.sh --posix",
         "bash --init-file script.sh --posix",
@@ -337,7 +375,7 @@ test "bash: unsupported options" {
         var env = EnvMap.init(alloc);
         defer env.deinit();
 
-        try testing.expect(try setupBash(alloc, cmdline, ".", &env) == null);
+        try testing.expect(try setupBash(alloc, .{ .shell = cmdline }, ".", &env) == null);
         try testing.expect(env.get("GHOSTTY_BASH_INJECT") == null);
         try testing.expect(env.get("GHOSTTY_BASH_RCFILE") == null);
         try testing.expect(env.get("GHOSTTY_BASH_UNEXPORT_HISTFILE") == null);
@@ -346,17 +384,23 @@ test "bash: unsupported options" {
 
 test "bash: inject flags" {
     const testing = std.testing;
-    const alloc = testing.allocator;
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
 
     // bash --norc
     {
         var env = EnvMap.init(alloc);
         defer env.deinit();
 
-        const command = try setupBash(alloc, "bash --norc", ".", &env);
-        defer if (command) |c| alloc.free(c);
+        const command = try setupBash(alloc, .{ .shell = "bash --norc" }, ".", &env);
 
-        try testing.expectEqualStrings("bash --posix", command.?);
+        try testing.expect(command.?.direct.len >= 2);
+        try testing.expectEqualStrings("bash", command.?.direct[0]);
+        try testing.expectEqualStrings("--posix", command.?.direct[1]);
+        if (comptime builtin.target.os.tag.isDarwin()) {
+            try testing.expectEqualStrings("--login", command.?.direct[2]);
+        }
         try testing.expectEqualStrings("1 --norc", env.get("GHOSTTY_BASH_INJECT").?);
     }
 
@@ -365,52 +409,64 @@ test "bash: inject flags" {
         var env = EnvMap.init(alloc);
         defer env.deinit();
 
-        const command = try setupBash(alloc, "bash --noprofile", ".", &env);
-        defer if (command) |c| alloc.free(c);
+        const command = try setupBash(alloc, .{ .shell = "bash --noprofile" }, ".", &env);
 
-        try testing.expectEqualStrings("bash --posix", command.?);
+        try testing.expect(command.?.direct.len >= 2);
+        try testing.expectEqualStrings("bash", command.?.direct[0]);
+        try testing.expectEqualStrings("--posix", command.?.direct[1]);
+        if (comptime builtin.target.os.tag.isDarwin()) {
+            try testing.expectEqualStrings("--login", command.?.direct[2]);
+        }
         try testing.expectEqualStrings("1 --noprofile", env.get("GHOSTTY_BASH_INJECT").?);
     }
 }
 
 test "bash: rcfile" {
     const testing = std.testing;
-    const alloc = testing.allocator;
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
 
     var env = EnvMap.init(alloc);
     defer env.deinit();
 
     // bash --rcfile
     {
-        const command = try setupBash(alloc, "bash --rcfile profile.sh", ".", &env);
-        defer if (command) |c| alloc.free(c);
-
-        try testing.expectEqualStrings("bash --posix", command.?);
+        const command = try setupBash(alloc, .{ .shell = "bash --rcfile profile.sh" }, ".", &env);
+        try testing.expect(command.?.direct.len >= 2);
+        try testing.expectEqualStrings("bash", command.?.direct[0]);
+        try testing.expectEqualStrings("--posix", command.?.direct[1]);
+        if (comptime builtin.target.os.tag.isDarwin()) {
+            try testing.expectEqualStrings("--login", command.?.direct[2]);
+        }
         try testing.expectEqualStrings("profile.sh", env.get("GHOSTTY_BASH_RCFILE").?);
     }
 
     // bash --init-file
     {
-        const command = try setupBash(alloc, "bash --init-file profile.sh", ".", &env);
-        defer if (command) |c| alloc.free(c);
-
-        try testing.expectEqualStrings("bash --posix", command.?);
+        const command = try setupBash(alloc, .{ .shell = "bash --init-file profile.sh" }, ".", &env);
+        try testing.expect(command.?.direct.len >= 2);
+        try testing.expectEqualStrings("bash", command.?.direct[0]);
+        try testing.expectEqualStrings("--posix", command.?.direct[1]);
+        if (comptime builtin.target.os.tag.isDarwin()) {
+            try testing.expectEqualStrings("--login", command.?.direct[2]);
+        }
         try testing.expectEqualStrings("profile.sh", env.get("GHOSTTY_BASH_RCFILE").?);
     }
 }
 
 test "bash: HISTFILE" {
     const testing = std.testing;
-    const alloc = testing.allocator;
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
 
     // HISTFILE unset
     {
         var env = EnvMap.init(alloc);
         defer env.deinit();
 
-        const command = try setupBash(alloc, "bash", ".", &env);
-        defer if (command) |c| alloc.free(c);
-
+        _ = try setupBash(alloc, .{ .shell = "bash" }, ".", &env);
         try testing.expect(std.mem.endsWith(u8, env.get("HISTFILE").?, ".bash_history"));
         try testing.expectEqualStrings("1", env.get("GHOSTTY_BASH_UNEXPORT_HISTFILE").?);
     }
@@ -422,9 +478,7 @@ test "bash: HISTFILE" {
 
         try env.put("HISTFILE", "my_history");
 
-        const command = try setupBash(alloc, "bash", ".", &env);
-        defer if (command) |c| alloc.free(c);
-
+        _ = try setupBash(alloc, .{ .shell = "bash" }, ".", &env);
         try testing.expectEqualStrings("my_history", env.get("HISTFILE").?);
         try testing.expect(env.get("GHOSTTY_BASH_UNEXPORT_HISTFILE") == null);
     }
@@ -432,25 +486,45 @@ test "bash: HISTFILE" {
 
 test "bash: additional arguments" {
     const testing = std.testing;
-    const alloc = testing.allocator;
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
 
     var env = EnvMap.init(alloc);
     defer env.deinit();
 
     // "-" argument separator
     {
-        const command = try setupBash(alloc, "bash - --arg file1 file2", ".", &env);
-        defer if (command) |c| alloc.free(c);
+        const command = try setupBash(alloc, .{ .shell = "bash - --arg file1 file2" }, ".", &env);
+        try testing.expect(command.?.direct.len >= 6);
+        try testing.expectEqualStrings("bash", command.?.direct[0]);
+        try testing.expectEqualStrings("--posix", command.?.direct[1]);
+        if (comptime builtin.target.os.tag.isDarwin()) {
+            try testing.expectEqualStrings("--login", command.?.direct[2]);
+        }
 
-        try testing.expectEqualStrings("bash --posix - --arg file1 file2", command.?);
+        const offset = if (comptime builtin.target.os.tag.isDarwin()) 3 else 2;
+        try testing.expectEqualStrings("-", command.?.direct[offset + 0]);
+        try testing.expectEqualStrings("--arg", command.?.direct[offset + 1]);
+        try testing.expectEqualStrings("file1", command.?.direct[offset + 2]);
+        try testing.expectEqualStrings("file2", command.?.direct[offset + 3]);
     }
 
     // "--" argument separator
     {
-        const command = try setupBash(alloc, "bash -- --arg file1 file2", ".", &env);
-        defer if (command) |c| alloc.free(c);
+        const command = try setupBash(alloc, .{ .shell = "bash -- --arg file1 file2" }, ".", &env);
+        try testing.expect(command.?.direct.len >= 6);
+        try testing.expectEqualStrings("bash", command.?.direct[0]);
+        try testing.expectEqualStrings("--posix", command.?.direct[1]);
+        if (comptime builtin.target.os.tag.isDarwin()) {
+            try testing.expectEqualStrings("--login", command.?.direct[2]);
+        }
 
-        try testing.expectEqualStrings("bash --posix -- --arg file1 file2", command.?);
+        const offset = if (comptime builtin.target.os.tag.isDarwin()) 3 else 2;
+        try testing.expectEqualStrings("--", command.?.direct[offset + 0]);
+        try testing.expectEqualStrings("--arg", command.?.direct[offset + 1]);
+        try testing.expectEqualStrings("file1", command.?.direct[offset + 2]);
+        try testing.expectEqualStrings("file2", command.?.direct[offset + 3]);
     }
 }
 

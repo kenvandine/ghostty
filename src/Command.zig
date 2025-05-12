@@ -33,14 +33,17 @@ const EnvMap = std.process.EnvMap;
 
 const PreExecFn = fn (*Command) void;
 
-/// Path to the command to run. This must be an absolute path. This
-/// library does not do PATH lookup.
-path: []const u8,
+/// Path to the command to run. This doesn't have to be an absolute path,
+/// because use exec functions that search the PATH, if necessary.
+///
+/// This field is null-terminated to avoid a copy for the sake of
+/// adding a null terminator since POSIX systems are so common.
+path: [:0]const u8,
 
 /// Command-line arguments. It is the responsibility of the caller to set
 /// args[0] to the command. If args is empty then args[0] will automatically
 /// be set to equal path.
-args: []const []const u8,
+args: []const [:0]const u8,
 
 /// Environment variables for the child process. If this is null, inherits
 /// the environment variables from this process. These are the exact
@@ -129,9 +132,8 @@ pub fn start(self: *Command, alloc: Allocator) !void {
 
 fn startPosix(self: *Command, arena: Allocator) !void {
     // Null-terminate all our arguments
-    const pathZ = try arena.dupeZ(u8, self.path);
-    const argsZ = try arena.allocSentinel(?[*:0]u8, self.args.len, null);
-    for (self.args, 0..) |arg, i| argsZ[i] = (try arena.dupeZ(u8, arg)).ptr;
+    const argsZ = try arena.allocSentinel(?[*:0]const u8, self.args.len, null);
+    for (self.args, 0..) |arg, i| argsZ[i] = arg.ptr;
 
     // Determine our env vars
     const envp = if (self.env) |env_map|
@@ -184,7 +186,9 @@ fn startPosix(self: *Command, arena: Allocator) !void {
     if (self.pre_exec) |f| f(self);
 
     // Finally, replace our process.
-    _ = posix.execveZ(pathZ, argsZ, envp) catch null;
+    // Note: we must use the "p"-variant of exec here because we
+    // do not guarantee our command is looked up already in the path.
+    _ = posix.execvpeZ(self.path, argsZ, envp) catch null;
 
     // If we are executing this code, the exec failed. In that scenario,
     // we return a very specific error that can be detected to determine

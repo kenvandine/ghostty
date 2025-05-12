@@ -103,10 +103,30 @@ typedef enum {
   GHOSTTY_ACTION_REPEAT,
 } ghostty_input_action_e;
 
+// Based on: https://www.w3.org/TR/uievents-code/
 typedef enum {
-  GHOSTTY_KEY_INVALID,
+  GHOSTTY_KEY_UNIDENTIFIED,
 
-  // a-z
+  // "Writing System Keys" § 3.1.1
+  GHOSTTY_KEY_BACKQUOTE,
+  GHOSTTY_KEY_BACKSLASH,
+  GHOSTTY_KEY_BRACKET_LEFT,
+  GHOSTTY_KEY_BRACKET_RIGHT,
+  GHOSTTY_KEY_COMMA,
+  GHOSTTY_KEY_DIGIT_0,
+  GHOSTTY_KEY_DIGIT_1,
+  GHOSTTY_KEY_DIGIT_2,
+  GHOSTTY_KEY_DIGIT_3,
+  GHOSTTY_KEY_DIGIT_4,
+  GHOSTTY_KEY_DIGIT_5,
+  GHOSTTY_KEY_DIGIT_6,
+  GHOSTTY_KEY_DIGIT_7,
+  GHOSTTY_KEY_DIGIT_8,
+  GHOSTTY_KEY_DIGIT_9,
+  GHOSTTY_KEY_EQUAL,
+  GHOSTTY_KEY_INTL_BACKSLASH,
+  GHOSTTY_KEY_INTL_RO,
+  GHOSTTY_KEY_INTL_YEN,
   GHOSTTY_KEY_A,
   GHOSTTY_KEY_B,
   GHOSTTY_KEY_C,
@@ -133,56 +153,91 @@ typedef enum {
   GHOSTTY_KEY_X,
   GHOSTTY_KEY_Y,
   GHOSTTY_KEY_Z,
-
-  // numbers
-  GHOSTTY_KEY_ZERO,
-  GHOSTTY_KEY_ONE,
-  GHOSTTY_KEY_TWO,
-  GHOSTTY_KEY_THREE,
-  GHOSTTY_KEY_FOUR,
-  GHOSTTY_KEY_FIVE,
-  GHOSTTY_KEY_SIX,
-  GHOSTTY_KEY_SEVEN,
-  GHOSTTY_KEY_EIGHT,
-  GHOSTTY_KEY_NINE,
-
-  // puncuation
-  GHOSTTY_KEY_SEMICOLON,
-  GHOSTTY_KEY_SPACE,
-  GHOSTTY_KEY_APOSTROPHE,
-  GHOSTTY_KEY_COMMA,
-  GHOSTTY_KEY_GRAVE_ACCENT,  // `
-  GHOSTTY_KEY_PERIOD,
-  GHOSTTY_KEY_SLASH,
   GHOSTTY_KEY_MINUS,
-  GHOSTTY_KEY_PLUS,
-  GHOSTTY_KEY_EQUAL,
-  GHOSTTY_KEY_LEFT_BRACKET,   // [
-  GHOSTTY_KEY_RIGHT_BRACKET,  // ]
-  GHOSTTY_KEY_BACKSLASH,      // \
+  GHOSTTY_KEY_PERIOD,
+  GHOSTTY_KEY_QUOTE,
+  GHOSTTY_KEY_SEMICOLON,
+  GHOSTTY_KEY_SLASH,
 
-  // control
-  GHOSTTY_KEY_UP,
-  GHOSTTY_KEY_DOWN,
-  GHOSTTY_KEY_RIGHT,
-  GHOSTTY_KEY_LEFT,
-  GHOSTTY_KEY_HOME,
-  GHOSTTY_KEY_END,
-  GHOSTTY_KEY_INSERT,
-  GHOSTTY_KEY_DELETE,
-  GHOSTTY_KEY_CAPS_LOCK,
-  GHOSTTY_KEY_SCROLL_LOCK,
-  GHOSTTY_KEY_NUM_LOCK,
-  GHOSTTY_KEY_PAGE_UP,
-  GHOSTTY_KEY_PAGE_DOWN,
-  GHOSTTY_KEY_ESCAPE,
-  GHOSTTY_KEY_ENTER,
-  GHOSTTY_KEY_TAB,
+  // "Functional Keys" § 3.1.2
+  GHOSTTY_KEY_ALT_LEFT,
+  GHOSTTY_KEY_ALT_RIGHT,
   GHOSTTY_KEY_BACKSPACE,
-  GHOSTTY_KEY_PRINT_SCREEN,
-  GHOSTTY_KEY_PAUSE,
+  GHOSTTY_KEY_CAPS_LOCK,
+  GHOSTTY_KEY_CONTEXT_MENU,
+  GHOSTTY_KEY_CONTROL_LEFT,
+  GHOSTTY_KEY_CONTROL_RIGHT,
+  GHOSTTY_KEY_ENTER,
+  GHOSTTY_KEY_META_LEFT,
+  GHOSTTY_KEY_META_RIGHT,
+  GHOSTTY_KEY_SHIFT_LEFT,
+  GHOSTTY_KEY_SHIFT_RIGHT,
+  GHOSTTY_KEY_SPACE,
+  GHOSTTY_KEY_TAB,
+  GHOSTTY_KEY_CONVERT,
+  GHOSTTY_KEY_KANA_MODE,
+  GHOSTTY_KEY_NON_CONVERT,
 
-  // function keys
+  // "Control Pad Section" § 3.2
+  GHOSTTY_KEY_DELETE,
+  GHOSTTY_KEY_END,
+  GHOSTTY_KEY_HELP,
+  GHOSTTY_KEY_HOME,
+  GHOSTTY_KEY_INSERT,
+  GHOSTTY_KEY_PAGE_DOWN,
+  GHOSTTY_KEY_PAGE_UP,
+
+  // "Arrow Pad Section" § 3.3
+  GHOSTTY_KEY_ARROW_DOWN,
+  GHOSTTY_KEY_ARROW_LEFT,
+  GHOSTTY_KEY_ARROW_RIGHT,
+  GHOSTTY_KEY_ARROW_UP,
+
+  // "Numpad Section" § 3.4
+  GHOSTTY_KEY_NUM_LOCK,
+  GHOSTTY_KEY_NUMPAD_0,
+  GHOSTTY_KEY_NUMPAD_1,
+  GHOSTTY_KEY_NUMPAD_2,
+  GHOSTTY_KEY_NUMPAD_3,
+  GHOSTTY_KEY_NUMPAD_4,
+  GHOSTTY_KEY_NUMPAD_5,
+  GHOSTTY_KEY_NUMPAD_6,
+  GHOSTTY_KEY_NUMPAD_7,
+  GHOSTTY_KEY_NUMPAD_8,
+  GHOSTTY_KEY_NUMPAD_9,
+  GHOSTTY_KEY_NUMPAD_ADD,
+  GHOSTTY_KEY_NUMPAD_BACKSPACE,
+  GHOSTTY_KEY_NUMPAD_CLEAR,
+  GHOSTTY_KEY_NUMPAD_CLEAR_ENTRY,
+  GHOSTTY_KEY_NUMPAD_COMMA,
+  GHOSTTY_KEY_NUMPAD_DECIMAL,
+  GHOSTTY_KEY_NUMPAD_DIVIDE,
+  GHOSTTY_KEY_NUMPAD_ENTER,
+  GHOSTTY_KEY_NUMPAD_EQUAL,
+  GHOSTTY_KEY_NUMPAD_MEMORY_ADD,
+  GHOSTTY_KEY_NUMPAD_MEMORY_CLEAR,
+  GHOSTTY_KEY_NUMPAD_MEMORY_RECALL,
+  GHOSTTY_KEY_NUMPAD_MEMORY_STORE,
+  GHOSTTY_KEY_NUMPAD_MEMORY_SUBTRACT,
+  GHOSTTY_KEY_NUMPAD_MULTIPLY,
+  GHOSTTY_KEY_NUMPAD_PAREN_LEFT,
+  GHOSTTY_KEY_NUMPAD_PAREN_RIGHT,
+  GHOSTTY_KEY_NUMPAD_SUBTRACT,
+  GHOSTTY_KEY_NUMPAD_SEPARATOR,
+  GHOSTTY_KEY_NUMPAD_UP,
+  GHOSTTY_KEY_NUMPAD_DOWN,
+  GHOSTTY_KEY_NUMPAD_RIGHT,
+  GHOSTTY_KEY_NUMPAD_LEFT,
+  GHOSTTY_KEY_NUMPAD_BEGIN,
+  GHOSTTY_KEY_NUMPAD_HOME,
+  GHOSTTY_KEY_NUMPAD_END,
+  GHOSTTY_KEY_NUMPAD_INSERT,
+  GHOSTTY_KEY_NUMPAD_DELETE,
+  GHOSTTY_KEY_NUMPAD_PAGE_UP,
+  GHOSTTY_KEY_NUMPAD_PAGE_DOWN,
+
+  // "Function Section" § 3.5
+  GHOSTTY_KEY_ESCAPE,
   GHOSTTY_KEY_F1,
   GHOSTTY_KEY_F2,
   GHOSTTY_KEY_F3,
@@ -208,59 +263,48 @@ typedef enum {
   GHOSTTY_KEY_F23,
   GHOSTTY_KEY_F24,
   GHOSTTY_KEY_F25,
+  GHOSTTY_KEY_FN,
+  GHOSTTY_KEY_FN_LOCK,
+  GHOSTTY_KEY_PRINT_SCREEN,
+  GHOSTTY_KEY_SCROLL_LOCK,
+  GHOSTTY_KEY_PAUSE,
 
-  // keypad
-  GHOSTTY_KEY_KP_0,
-  GHOSTTY_KEY_KP_1,
-  GHOSTTY_KEY_KP_2,
-  GHOSTTY_KEY_KP_3,
-  GHOSTTY_KEY_KP_4,
-  GHOSTTY_KEY_KP_5,
-  GHOSTTY_KEY_KP_6,
-  GHOSTTY_KEY_KP_7,
-  GHOSTTY_KEY_KP_8,
-  GHOSTTY_KEY_KP_9,
-  GHOSTTY_KEY_KP_DECIMAL,
-  GHOSTTY_KEY_KP_DIVIDE,
-  GHOSTTY_KEY_KP_MULTIPLY,
-  GHOSTTY_KEY_KP_SUBTRACT,
-  GHOSTTY_KEY_KP_ADD,
-  GHOSTTY_KEY_KP_ENTER,
-  GHOSTTY_KEY_KP_EQUAL,
-  GHOSTTY_KEY_KP_SEPARATOR,
-  GHOSTTY_KEY_KP_LEFT,
-  GHOSTTY_KEY_KP_RIGHT,
-  GHOSTTY_KEY_KP_UP,
-  GHOSTTY_KEY_KP_DOWN,
-  GHOSTTY_KEY_KP_PAGE_UP,
-  GHOSTTY_KEY_KP_PAGE_DOWN,
-  GHOSTTY_KEY_KP_HOME,
-  GHOSTTY_KEY_KP_END,
-  GHOSTTY_KEY_KP_INSERT,
-  GHOSTTY_KEY_KP_DELETE,
-  GHOSTTY_KEY_KP_BEGIN,
-
-  // modifiers
-  GHOSTTY_KEY_LEFT_SHIFT,
-  GHOSTTY_KEY_LEFT_CONTROL,
-  GHOSTTY_KEY_LEFT_ALT,
-  GHOSTTY_KEY_LEFT_SUPER,
-  GHOSTTY_KEY_RIGHT_SHIFT,
-  GHOSTTY_KEY_RIGHT_CONTROL,
-  GHOSTTY_KEY_RIGHT_ALT,
-  GHOSTTY_KEY_RIGHT_SUPER,
+  // "Media Keys" § 3.6
+  GHOSTTY_KEY_BROWSER_BACK,
+  GHOSTTY_KEY_BROWSER_FAVORITES,
+  GHOSTTY_KEY_BROWSER_FORWARD,
+  GHOSTTY_KEY_BROWSER_HOME,
+  GHOSTTY_KEY_BROWSER_REFRESH,
+  GHOSTTY_KEY_BROWSER_SEARCH,
+  GHOSTTY_KEY_BROWSER_STOP,
+  GHOSTTY_KEY_EJECT,
+  GHOSTTY_KEY_LAUNCH_APP_1,
+  GHOSTTY_KEY_LAUNCH_APP_2,
+  GHOSTTY_KEY_LAUNCH_MAIL,
+  GHOSTTY_KEY_MEDIA_PLAY_PAUSE,
+  GHOSTTY_KEY_MEDIA_SELECT,
+  GHOSTTY_KEY_MEDIA_STOP,
+  GHOSTTY_KEY_MEDIA_TRACK_NEXT,
+  GHOSTTY_KEY_MEDIA_TRACK_PREVIOUS,
+  GHOSTTY_KEY_POWER,
+  GHOSTTY_KEY_SLEEP,
+  GHOSTTY_KEY_AUDIO_VOLUME_DOWN,
+  GHOSTTY_KEY_AUDIO_VOLUME_MUTE,
+  GHOSTTY_KEY_AUDIO_VOLUME_UP,
+  GHOSTTY_KEY_WAKE_UP,
 } ghostty_input_key_e;
 
 typedef struct {
   ghostty_input_action_e action;
   ghostty_input_mods_e mods;
+  ghostty_input_mods_e consumed_mods;
   uint32_t keycode;
   const char* text;
+  uint32_t unshifted_codepoint;
   bool composing;
 } ghostty_input_key_s;
 
 typedef enum {
-  GHOSTTY_TRIGGER_TRANSLATED,
   GHOSTTY_TRIGGER_PHYSICAL,
   GHOSTTY_TRIGGER_UNICODE,
 } ghostty_input_trigger_tag_e;
@@ -276,6 +320,13 @@ typedef struct {
   ghostty_input_trigger_key_u key;
   ghostty_input_mods_e mods;
 } ghostty_input_trigger_s;
+
+typedef struct {
+  const char* action_key;
+  const char* action;
+  const char* title;
+  const char* description;
+} ghostty_command_s;
 
 typedef enum {
   GHOSTTY_BUILD_MODE_DEBUG,
@@ -348,6 +399,11 @@ typedef struct {
   size_t len;
 } ghostty_config_color_list_s;
 
+// config.Palette
+typedef struct {
+  ghostty_config_color_s colors[256];
+} ghostty_config_palette_s;
+
 // apprt.Target.Key
 typedef enum {
   GHOSTTY_TARGET_APP,
@@ -414,6 +470,13 @@ typedef enum {
   GHOSTTY_FULLSCREEN_NON_NATIVE_VISIBLE_MENU,
   GHOSTTY_FULLSCREEN_NON_NATIVE_PADDED_NOTCH,
 } ghostty_action_fullscreen_e;
+
+// apprt.action.FloatWindow
+typedef enum {
+  GHOSTTY_FLOAT_WINDOW_ON,
+  GHOSTTY_FLOAT_WINDOW_OFF,
+  GHOSTTY_FLOAT_WINDOW_TOGGLE,
+} ghostty_action_float_window_e;
 
 // apprt.action.SecureInput
 typedef enum {
@@ -571,6 +634,7 @@ typedef enum {
   GHOSTTY_ACTION_TOGGLE_TAB_OVERVIEW,
   GHOSTTY_ACTION_TOGGLE_WINDOW_DECORATIONS,
   GHOSTTY_ACTION_TOGGLE_QUICK_TERMINAL,
+  GHOSTTY_ACTION_TOGGLE_COMMAND_PALETTE,
   GHOSTTY_ACTION_TOGGLE_VISIBILITY,
   GHOSTTY_ACTION_MOVE_TAB,
   GHOSTTY_ACTION_GOTO_TAB,
@@ -595,12 +659,14 @@ typedef enum {
   GHOSTTY_ACTION_RENDERER_HEALTH,
   GHOSTTY_ACTION_OPEN_CONFIG,
   GHOSTTY_ACTION_QUIT_TIMER,
+  GHOSTTY_ACTION_FLOAT_WINDOW,
   GHOSTTY_ACTION_SECURE_INPUT,
   GHOSTTY_ACTION_KEY_SEQUENCE,
   GHOSTTY_ACTION_COLOR_CHANGE,
   GHOSTTY_ACTION_RELOAD_CONFIG,
   GHOSTTY_ACTION_CONFIG_CHANGE,
   GHOSTTY_ACTION_CLOSE_WINDOW,
+  GHOSTTY_ACTION_RING_BELL,
 } ghostty_action_tag_e;
 
 typedef union {
@@ -622,6 +688,7 @@ typedef union {
   ghostty_action_mouse_over_link_s mouse_over_link;
   ghostty_action_renderer_health_e renderer_health;
   ghostty_action_quit_timer_e quit_timer;
+  ghostty_action_float_window_e float_window;
   ghostty_action_secure_input_e secure_input;
   ghostty_action_key_sequence_s key_sequence;
   ghostty_action_color_change_s color_change;
@@ -721,9 +788,11 @@ void ghostty_surface_set_color_scheme(ghostty_surface_t,
                                       ghostty_color_scheme_e);
 ghostty_input_mods_e ghostty_surface_key_translation_mods(ghostty_surface_t,
                                                           ghostty_input_mods_e);
+void ghostty_surface_commands(ghostty_surface_t, ghostty_command_s**, size_t*);
 bool ghostty_surface_key(ghostty_surface_t, ghostty_input_key_s);
 bool ghostty_surface_key_is_binding(ghostty_surface_t, ghostty_input_key_s);
 void ghostty_surface_text(ghostty_surface_t, const char*, uintptr_t);
+void ghostty_surface_preedit(ghostty_surface_t, const char*, uintptr_t);
 bool ghostty_surface_mouse_captured(ghostty_surface_t);
 bool ghostty_surface_mouse_button(ghostty_surface_t,
                                   ghostty_input_mouse_state_e,

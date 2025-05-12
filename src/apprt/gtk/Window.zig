@@ -25,6 +25,7 @@ const input = @import("../../input.zig");
 const CoreSurface = @import("../../Surface.zig");
 
 const App = @import("App.zig");
+const Builder = @import("Builder.zig");
 const Color = configpkg.Config.Color;
 const Surface = @import("Surface.zig");
 const Menu = @import("menu.zig").Menu;
@@ -242,12 +243,19 @@ pub fn init(self: *Window, app: *App) !void {
     }
 
     {
-        const btn = gtk.Button.newFromIconName("tab-new-symbolic");
+        const btn = adw.SplitButton.new();
+        btn.setIconName("tab-new-symbolic");
         btn.as(gtk.Widget).setTooltipText(i18n._("New Tab"));
-        _ = gtk.Button.signals.clicked.connect(
+        btn.setDropdownTooltip(i18n._("New Split"));
+
+        var builder = Builder.init("menu-headerbar-split_menu", 1, 0);
+        defer builder.deinit();
+        btn.setMenuModel(builder.getObject(gio.MenuModel, "menu"));
+
+        _ = adw.SplitButton.signals.clicked.connect(
             btn,
             *Window,
-            gtkTabNewClick,
+            adwNewTabClick,
             self,
             .{},
         );
@@ -279,6 +287,15 @@ pub fn init(self: *Window, app: *App) !void {
         self,
         .{
             .detail = "is-active",
+        },
+    );
+    _ = gobject.Object.signals.notify.connect(
+        self.window,
+        *Window,
+        gtkWindowUpdateScaleFactor,
+        self,
+        .{
+            .detail = "scale-factor",
         },
     );
 
@@ -775,7 +792,7 @@ fn gtkWindowNotifyIsActive(
     _: *adw.ApplicationWindow,
     _: *gobject.ParamSpec,
     self: *Window,
-) callconv(.C) void {
+) callconv(.c) void {
     if (!self.isQuickTerminal()) return;
 
     // Hide when we're unfocused
@@ -784,14 +801,40 @@ fn gtkWindowNotifyIsActive(
     }
 }
 
-// Note: we MUST NOT use the GtkButton parameter because gtkActionNewTab
-// sends an undefined value.
-fn gtkTabNewClick(_: *gtk.Button, self: *Window) callconv(.c) void {
+fn gtkWindowUpdateScaleFactor(
+    _: *adw.ApplicationWindow,
+    _: *gobject.ParamSpec,
+    self: *Window,
+) callconv(.c) void {
+    // On some platforms (namely X11) we need to refresh our appearance when
+    // the scale factor changes. In theory this could be more fine-grained as
+    // a full refresh could be expensive, but a) this *should* be rare, and
+    // b) quite noticeable visual bugs would occur if this is not present.
+    self.winproto.syncAppearance() catch |err| {
+        log.err(
+            "failed to sync appearance after scale factor has been updated={}",
+            .{err},
+        );
+        return;
+    };
+}
+
+/// Perform a binding action on the window's action surface.
+fn performBindingAction(self: *Window, action: input.Binding.Action) void {
     const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .new_tab = {} }) catch |err| {
+    _ = surface.performBindingAction(action) catch |err| {
         log.warn("error performing binding action error={}", .{err});
         return;
     };
+}
+
+fn gtkTabNewClick(_: *gtk.Button, self: *Window) callconv(.c) void {
+    self.performBindingAction(.{ .new_tab = {} });
+}
+
+/// Create a new surface (tab or split).
+fn adwNewTabClick(_: *adw.SplitButton, self: *Window) callconv(.c) void {
+    self.performBindingAction(.{ .new_tab = {} });
 }
 
 /// Create a new tab from the AdwTabOverview. We can't copy gtkTabNewClick
@@ -840,7 +883,7 @@ fn adwTabOverviewOpen(
 
 fn adwTabOverviewFocusTimer(
     ud: ?*anyopaque,
-) callconv(.C) c_int {
+) callconv(.c) c_int {
     if (!adw_version.supportsTabOverview()) unreachable;
     const self: *Window = @ptrCast(@alignCast(ud orelse return 0));
     self.adw_tab_overview_focus_timer = null;
@@ -927,7 +970,7 @@ fn gtkActionAbout(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
+) callconv(.c) void {
     const name = "Ghostty";
     const icon = "com.mitchellh.ghostty";
     const website = "https://ghostty.org";
@@ -971,7 +1014,7 @@ fn gtkActionClose(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
+) callconv(.c) void {
     self.closeWithConfirmation();
 }
 
@@ -979,153 +1022,104 @@ fn gtkActionNewWindow(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .new_window = {} }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .new_window = {} });
 }
 
 fn gtkActionNewTab(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    // We can use undefined because the button is not used.
-    gtkTabNewClick(undefined, self);
+) callconv(.c) void {
+    self.performBindingAction(.{ .new_tab = {} });
 }
 
 fn gtkActionCloseTab(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .close_tab = {} }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .close_tab = {} });
 }
 
 fn gtkActionSplitRight(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .new_split = .right }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .new_split = .right });
 }
 
 fn gtkActionSplitDown(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .new_split = .down }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .new_split = .down });
 }
 
 fn gtkActionSplitLeft(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .new_split = .left }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .new_split = .left });
 }
 
 fn gtkActionSplitUp(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .new_split = .up }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .new_split = .up });
 }
 
 fn gtkActionToggleInspector(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .inspector = .toggle }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .inspector = .toggle });
 }
 
 fn gtkActionCopy(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .copy_to_clipboard = {} }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .copy_to_clipboard = {} });
 }
 
 fn gtkActionPaste(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .paste_from_clipboard = {} }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .paste_from_clipboard = {} });
 }
 
 fn gtkActionReset(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .reset = {} }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .reset = {} });
 }
 
 fn gtkActionClear(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .clear_screen = {} }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .clear_screen = {} });
 }
 
 fn gtkActionPromptTitle(
     _: *gio.SimpleAction,
     _: ?*glib.Variant,
     self: *Window,
-) callconv(.C) void {
-    const surface = self.actionSurface() orelse return;
-    _ = surface.performBindingAction(.{ .prompt_surface_title = {} }) catch |err| {
-        log.warn("error performing binding action error={}", .{err});
-        return;
-    };
+) callconv(.c) void {
+    self.performBindingAction(.{ .prompt_surface_title = {} });
 }
 
 /// Returns the surface to use for an action.
@@ -1139,7 +1133,7 @@ fn gtkTitlebarMenuActivate(
     btn: *gtk.MenuButton,
     _: *gobject.ParamSpec,
     self: *Window,
-) callconv(.C) void {
+) callconv(.c) void {
     // debian 12 is stuck on GTK 4.8
     if (!gtk_version.atLeast(4, 10, 0)) return;
     const active = btn.getActive() != 0;

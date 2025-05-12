@@ -6,14 +6,12 @@ extension Ghostty {
     /// Render a terminal for the active app in the environment.
     struct Terminal: View {
         @EnvironmentObject private var ghostty: Ghostty.App
-        @FocusedValue(\.ghosttySurfaceTitle) private var surfaceTitle: String?
 
         var body: some View {
             if let app = self.ghostty.app {
                 SurfaceForApp(app) { surfaceView in
                     SurfaceWrapper(surfaceView: surfaceView)
                 }
-                .navigationTitle(surfaceTitle ?? "Ghostty")
             }
         }
     }
@@ -59,6 +57,15 @@ extension Ghostty {
 
         @EnvironmentObject private var ghostty: Ghostty.App
 
+        var title: String {
+            var result = surfaceView.title
+            if (surfaceView.bell) {
+                result = "🔔 \(result)"
+            }
+
+            return result
+        }
+
         var body: some View {
             let center = NotificationCenter.default
 
@@ -74,7 +81,6 @@ extension Ghostty {
 
                     Surface(view: surfaceView, size: geo.size)
                         .focused($surfaceFocus)
-                        .focusedValue(\.ghosttySurfaceTitle, surfaceView.title)
                         .focusedValue(\.ghosttySurfacePwd, surfaceView.pwd)
                         .focusedValue(\.ghosttySurfaceView, surfaceView)
                         .focusedValue(\.ghosttySurfaceCellSize, surfaceView.cellSize)
@@ -320,7 +326,7 @@ extension Ghostty {
                         Spacer()
                     }
 
-                    Text(verbatim: "\(size.columns)c ⨯ \(size.rows)r")
+                    Text(verbatim: "\(size.columns) ⨯ \(size.rows)")
                         .padding(.init(top: padding, leading: padding, bottom: padding, trailing: padding))
                         .background(
                             RoundedRectangle(cornerRadius: 4)
@@ -485,15 +491,6 @@ extension FocusedValues {
 
     struct FocusedGhosttySurface: FocusedValueKey {
         typealias Value = Ghostty.SurfaceView
-    }
-
-    var ghosttySurfaceTitle: String? {
-        get { self[FocusedGhosttySurfaceTitle.self] }
-        set { self[FocusedGhosttySurfaceTitle.self] = newValue }
-    }
-
-    struct FocusedGhosttySurfaceTitle: FocusedValueKey {
-        typealias Value = String
     }
 
     var ghosttySurfacePwd: String? {

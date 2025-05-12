@@ -114,9 +114,12 @@ pub fn gotoNthTab(self: *TabView, position: c_int) bool {
     return true;
 }
 
+pub fn getTabPage(self: *TabView, tab: *Tab) ?*adw.TabPage {
+    return self.tab_view.getPage(tab.box.as(gtk.Widget));
+}
+
 pub fn getTabPosition(self: *TabView, tab: *Tab) ?c_int {
-    const page = self.tab_view.getPage(tab.box.as(gtk.Widget));
-    return self.tab_view.getPagePosition(page);
+    return self.tab_view.getPagePosition(self.getTabPage(tab) orelse return null);
 }
 
 pub fn gotoPreviousTab(self: *TabView, tab: *Tab) bool {
@@ -161,17 +164,16 @@ pub fn moveTab(self: *TabView, tab: *Tab, position: c_int) void {
 }
 
 pub fn reorderPage(self: *TabView, tab: *Tab, position: c_int) void {
-    const page = self.tab_view.getPage(tab.box.as(gtk.Widget));
-    _ = self.tab_view.reorderPage(page, position);
+    _ = self.tab_view.reorderPage(self.getTabPage(tab) orelse return, position);
 }
 
 pub fn setTabTitle(self: *TabView, tab: *Tab, title: [:0]const u8) void {
-    const page = self.tab_view.getPage(tab.box.as(gtk.Widget));
+    const page = self.getTabPage(tab) orelse return;
     page.setTitle(title.ptr);
 }
 
 pub fn setTabTooltip(self: *TabView, tab: *Tab, tooltip: [:0]const u8) void {
-    const page = self.tab_view.getPage(tab.box.as(gtk.Widget));
+    const page = self.getTabPage(tab) orelse return;
     page.setTooltip(tooltip.ptr);
 }
 
@@ -203,8 +205,7 @@ pub fn closeTab(self: *TabView, tab: *Tab) void {
         if (n > 1) self.forcing_close = false;
     }
 
-    const page = self.tab_view.getPage(tab.box.as(gtk.Widget));
-    self.tab_view.closePage(page);
+    if (self.getTabPage(tab)) |page| self.tab_view.closePage(page);
 
     // If we have no more tabs we close the window
     if (self.nPages() == 0) {
@@ -226,7 +227,7 @@ pub fn createWindow(window: *Window) !*Window {
     return new_window;
 }
 
-fn adwPageAttached(_: *adw.TabView, page: *adw.TabPage, _: c_int, self: *TabView) callconv(.C) void {
+fn adwPageAttached(_: *adw.TabView, page: *adw.TabPage, _: c_int, self: *TabView) callconv(.c) void {
     const child = page.getChild().as(gobject.Object);
     const tab: *Tab = @ptrCast(@alignCast(child.getData(Tab.GHOSTTY_TAB) orelse return));
     tab.window = self.window;
@@ -238,7 +239,7 @@ fn adwClosePage(
     _: *adw.TabView,
     page: *adw.TabPage,
     self: *TabView,
-) callconv(.C) c_int {
+) callconv(.c) c_int {
     const child = page.getChild().as(gobject.Object);
     const tab: *Tab = @ptrCast(@alignCast(child.getData(Tab.GHOSTTY_TAB) orelse return 0));
     self.tab_view.closePageFinish(page, @intFromBool(self.forcing_close));
@@ -250,7 +251,7 @@ fn adwClosePage(
 fn adwTabViewCreateWindow(
     _: *adw.TabView,
     self: *TabView,
-) callconv(.C) ?*adw.TabView {
+) callconv(.c) ?*adw.TabView {
     const window = createWindow(self.window) catch |err| {
         log.warn("error creating new window error={}", .{err});
         return null;
@@ -258,8 +259,13 @@ fn adwTabViewCreateWindow(
     return window.notebook.tab_view;
 }
 
-fn adwSelectPage(_: *adw.TabView, _: *gobject.ParamSpec, self: *TabView) callconv(.C) void {
+fn adwSelectPage(_: *adw.TabView, _: *gobject.ParamSpec, self: *TabView) callconv(.c) void {
     const page = self.tab_view.getSelectedPage() orelse return;
+
+    // If the tab was previously marked as needing attention
+    // (e.g. due to a bell character), we now unmark that
+    page.setNeedsAttention(@intFromBool(false));
+
     const title = page.getTitle();
     self.window.setTitle(std.mem.span(title));
 }

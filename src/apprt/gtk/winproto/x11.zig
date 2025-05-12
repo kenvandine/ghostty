@@ -219,13 +219,12 @@ pub const Window = struct {
 
     pub fn resizeEvent(self: *Window) !void {
         // The blur region must update with window resizes
-        const gtk_widget = self.gtk_window.as(gtk.Widget);
-        self.blur_region.width = gtk_widget.getWidth();
-        self.blur_region.height = gtk_widget.getHeight();
         try self.syncBlur();
     }
 
     pub fn syncAppearance(self: *Window) !void {
+        // The user could have toggled between CSDs and SSDs,
+        // therefore we need to recalculate the blur region offset.
         self.blur_region = blur: {
             // NOTE(pluiedev): CSDs are a f--king mistake.
             // Please, GNOME, stop this nonsense of making a window ~30% bigger
@@ -235,6 +234,11 @@ pub const Window = struct {
             var y: f64 = 0;
 
             self.gtk_window.as(gtk.Native).getSurfaceTransform(&x, &y);
+
+            // Transform surface coordinates to device coordinates.
+            const scale: f64 = @floatFromInt(self.gtk_window.as(gtk.Widget).getScaleFactor());
+            x *= scale;
+            y *= scale;
 
             break :blur .{
                 .x = @intFromFloat(x),
@@ -264,6 +268,13 @@ pub const Window = struct {
         // (cf. https://github.com/cutefishos/fishui/blob/41d4ba194063a3c7fff4675619b57e6ac0504f06/src/platforms/linux/blurhelper/windowblur.cpp#L134)
         // and I think it's not really noticeable enough to justify the effort.
         // (Wayland also has this visual artifact anyway...)
+
+        const gtk_widget = self.gtk_window.as(gtk.Widget);
+
+        // Transform surface coordinates to device coordinates.
+        const scale = self.gtk_window.as(gtk.Widget).getScaleFactor();
+        self.blur_region.width = gtk_widget.getWidth() * scale;
+        self.blur_region.height = gtk_widget.getHeight() * scale;
 
         const blur = self.config.background_blur;
         log.debug("set blur={}, window xid={}, region={}", .{

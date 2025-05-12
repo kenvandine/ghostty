@@ -83,6 +83,15 @@ pub const Flags = packed struct(u5) {
     report_all: bool = false,
     report_associated: bool = false,
 
+    /// Sets all modes on.
+    pub const @"true": Flags = .{
+        .disambiguate = true,
+        .report_events = true,
+        .report_alternates = true,
+        .report_all = true,
+        .report_associated = true,
+    };
+
     pub fn int(self: Flags) u5 {
         return @bitCast(self);
     }

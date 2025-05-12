@@ -98,6 +98,12 @@ pub const Parser = struct {
                     self.state = .control_value;
                 },
 
+                // This can be encountered if we have a sequence with no
+                // control data, only payload data (i.e. "\x1b_G;<data>").
+                //
+                // Kitty treats this as valid so we do as well.
+                ';' => self.state = .data,
+
                 else => try self.accumulateValue(c, .control_key_ignore),
             },
 
@@ -1051,6 +1057,21 @@ test "delete command" {
     try testing.expect(!dv.delete);
     try testing.expectEqual(@as(u32, 3), dv.x);
     try testing.expectEqual(@as(u32, 4), dv.y);
+}
+
+test "no control data" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    var p = Parser.init(alloc);
+    defer p.deinit();
+
+    const input = ";QUFBQQ";
+    for (input) |c| try p.feed(c);
+    const command = try p.complete();
+    defer command.deinit(alloc);
+
+    try testing.expect(command.control == .transmit);
+    try testing.expectEqualStrings("AAAA", command.data);
 }
 
 test "ignore unknown keys (long)" {
